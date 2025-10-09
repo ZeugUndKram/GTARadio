@@ -4,6 +4,7 @@ Example usage of the rotary encoder handler
 """
 
 import input
+
 import time
 import signal
 import sys
@@ -29,7 +30,7 @@ if __name__ == "__main__":
     
     # Initialize encoder (replace with your actual GPIO pins)
     # CLK=17, DT=18, SW=27 are common examples
-    encoder = rotary_encoder.init_encoder(clk_pin=17, dt_pin=18, sw_pin=27)
+    encoder = input.init_encoder(clk_pin=17, dt_pin=18, sw_pin=27)
     
     # Set up event handlers
     encoder.on_rotate(rotation_handler)
