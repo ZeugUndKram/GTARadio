@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 KY-040 Rotary Encoder Handler for Raspberry Pi
-Clean, modular implementation with event callbacks
+Pre-configured for GPIO 14, 15, 16
 """
 
 import RPi.GPIO as GPIO
@@ -10,14 +10,14 @@ import threading
 from typing import Callable, Optional
 
 class RotaryEncoder:
-    def __init__(self, clk_pin: int, dt_pin: int, sw_pin: Optional[int] = None):
+    def __init__(self, clk_pin: int = 14, dt_pin: int = 15, sw_pin: Optional[int] = 16):
         """
-        Initialize rotary encoder
+        Initialize rotary encoder with default pins 14, 15, 16
         
         Args:
-            clk_pin: GPIO pin for CLK (Clock) signal
-            dt_pin: GPIO pin for DT (Data) signal  
-            sw_pin: GPIO pin for SW (Switch) button (optional)
+            clk_pin: GPIO pin for CLK (Clock) signal (default: 14)
+            dt_pin: GPIO pin for DT (Data) signal (default: 15)  
+            sw_pin: GPIO pin for SW (Switch) button (default: 16)
         """
         self.clk_pin = clk_pin
         self.dt_pin = dt_pin
@@ -128,14 +128,15 @@ class RotaryEncoder:
 # Global encoder instance for easy importing
 _encoder_instance = None
 
-def init_encoder(clk_pin: int, dt_pin: int, sw_pin: Optional[int] = None) -> RotaryEncoder:
+def init_encoder(clk_pin: int = 14, dt_pin: int = 15, sw_pin: Optional[int] = 16) -> RotaryEncoder:
     """
     Initialize and return a global encoder instance
+    Default pins: CLK=14, DT=15, SW=16
     
     Args:
-        clk_pin: GPIO pin for CLK signal
-        dt_pin: GPIO pin for DT signal
-        sw_pin: GPIO pin for SW button (optional)
+        clk_pin: GPIO pin for CLK signal (default: 14)
+        dt_pin: GPIO pin for DT signal (default: 15)
+        sw_pin: GPIO pin for SW button (default: 16)
     
     Returns:
         RotaryEncoder instance
@@ -152,5 +153,6 @@ def get_encoder() -> RotaryEncoder:
         RotaryEncoder instance
     """
     if _encoder_instance is None:
-        raise RuntimeError("Encoder not initialized. Call init_encoder() first.")
+        # Auto-initialize with default pins if not already done
+        return init_encoder()
     return _encoder_instance
