@@ -1,41 +1,41 @@
 #!/usr/bin/env python3
 """
-Test script for input.py with pre-configured pins
+Test script to verify rotation and button work separately
 """
 
 import input
 import time
-import signal
-import sys
+
+encoder = input.get_encoder()
+
+# Counter for tracking
+rotation_count = 0
+button_count = 0
 
 def rotation_handler(direction, counter):
-    if direction == 1:
-        print(f"↻ CLOCKWISE - Position: {counter}")
-    else:
-        print(f"↺ COUNTER-CLOCKWISE - Position: {counter}")
+    global rotation_count
+    rotation_count += 1
+    direction_str = "CLOCKWISE" if direction == 1 else "COUNTER-CLOCKWISE"
+    print(f"🎯 ROTATION #{rotation_count}: {direction_str} - Total: {counter}")
 
 def button_handler():
-    print("🔘 BUTTON PRESSED!")
+    global button_count
+    button_count += 1
+    print(f"🔘 BUTTON #{button_count}: PRESSED")
 
-# Initialize encoder with DEFAULT pins (14, 15, 16)
-encoder = input.init_encoder()
-
-# Set up handlers
 encoder.on_rotate(rotation_handler)
 encoder.on_button_press(button_handler)
 
-print("Rotary encoder ready with pins 14, 15, 16!")
-print("Wiring:")
-print("CLK → GPIO14 (physical pin 8)")
-print("DT  → GPIO15 (physical pin 10)")
-print("SW  → GPIO16 (physical pin 36)")
-print("+   → 3.3V   (pin 1)")
-print("GND → Ground (pin 6)")
-print("\nTurn the knob or press the button to test...")
+print("=== ROTARY ENCODER TEST ===")
+print("Pins: CLK=14, DT=15, SW=16")
+print("TURN the knob → should show ROTATION messages")
+print("PUSH the knob → should show BUTTON messages")
+print("They should NOT interfere with each other!")
+print("Press Ctrl+C to exit\n")
 
 try:
     while True:
         time.sleep(0.1)
 except KeyboardInterrupt:
     encoder.cleanup()
-    print("\nGoodbye!")
+    print(f"\nTest complete: {rotation_count} rotations, {button_count} button presses")

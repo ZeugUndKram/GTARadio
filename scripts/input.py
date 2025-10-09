@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 KY-040 Rotary Encoder Handler for Raspberry Pi
-Pre-configured for GPIO 14, 15, 16
+Fixed version with proper rotation detection
 """
 
 import RPi.GPIO as GPIO
@@ -13,11 +13,6 @@ class RotaryEncoder:
     def __init__(self, clk_pin: int = 14, dt_pin: int = 15, sw_pin: Optional[int] = 16):
         """
         Initialize rotary encoder with default pins 14, 15, 16
-        
-        Args:
-            clk_pin: GPIO pin for CLK (Clock) signal (default: 14)
-            dt_pin: GPIO pin for DT (Data) signal (default: 15)  
-            sw_pin: GPIO pin for SW (Switch) button (default: 16)
         """
         self.clk_pin = clk_pin
         self.dt_pin = dt_pin
@@ -27,7 +22,7 @@ class RotaryEncoder:
         self.clk_last_state = 0
         self.counter = 0
         self.last_rotation_time = 0
-        self.debounce_delay = 0.01  # 10ms debounce
+        self.debounce_delay = 0.002  # Reduced debounce for better response
         
         # Callback functions
         self.rotate_callback = None
@@ -47,67 +42,55 @@ class RotaryEncoder:
         # Get initial state
         self.clk_last_state = GPIO.input(self.clk_pin)
         
-        # Add interrupt detection on both encoder pins
-        GPIO.add_event_detect(self.clk_pin, GPIO.BOTH, callback=self._rotation_callback, bouncetime=2)
-        GPIO.add_event_detect(self.dt_pin, GPIO.BOTH, callback=self._rotation_callback, bouncetime=2)
+        # Add interrupt detection on CLK pin only (fixes the issue)
+        GPIO.add_event_detect(self.clk_pin, GPIO.FALLING, 
+                            callback=self._rotation_callback, 
+                            bouncetime=5)
         
-        # Setup button if provided
+        # Setup button if provided - use longer debounce
         if self.sw_pin is not None:
             GPIO.setup(self.sw_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             GPIO.add_event_detect(self.sw_pin, GPIO.FALLING, 
-                                callback=self._button_callback, bouncetime=300)
+                                callback=self._button_callback, 
+                                bouncetime=500)  # Longer debounce for button
     
     def _rotation_callback(self, channel):
-        """Handle rotary encoder rotation with debouncing"""
-        current_time = time.time()
-        
-        # Debounce check
-        if current_time - self.last_rotation_time < self.debounce_delay:
-            return
-            
+        """Handle rotary encoder rotation - FIXED VERSION"""
+        # Read both pins when CLK detects falling edge
         clk_state = GPIO.input(self.clk_pin)
         dt_state = GPIO.input(self.dt_pin)
         
-        # Only process if state changed
-        if clk_state != self.clk_last_state:
-            self.last_rotation_time = current_time
-            
-            # Determine direction
-            if dt_state != clk_state:
-                direction = 1  # Clockwise
+        # Only process if CLK is low (falling edge)
+        if clk_state == 0:
+            if dt_state == 1:
+                # Clockwise rotation
+                direction = 1
                 self.counter += 1
             else:
-                direction = -1  # Counter-clockwise
+                # Counter-clockwise rotation  
+                direction = -1
                 self.counter -= 1
             
             # Call user callback if set
             if self.rotate_callback:
                 self.rotate_callback(direction, self.counter)
-            
-        self.clk_last_state = clk_state
     
     def _button_callback(self, channel):
-        """Handle button press"""
-        if self.button_callback:
-            self.button_callback()
+        """Handle button press - only called for actual button"""
+        # Double-check it's really the button by reading the pin
+        if GPIO.input(self.sw_pin) == 0:  # Button is pressed (active low)
+            if self.button_callback:
+                self.button_callback()
     
     def on_rotate(self, callback: Callable[[int, int], None]):
         """
         Set callback for rotation events
-        
-        Args:
-            callback: Function that receives (direction, counter)
-                     direction: 1 for CW, -1 for CCW
-                     counter: current cumulative position
         """
         self.rotate_callback = callback
     
     def on_button_press(self, callback: Callable[[], None]):
         """
         Set callback for button press events
-        
-        Args:
-            callback: Function called when button is pressed
         """
         self.button_callback = callback
     
@@ -131,15 +114,6 @@ _encoder_instance = None
 def init_encoder(clk_pin: int = 14, dt_pin: int = 15, sw_pin: Optional[int] = 16) -> RotaryEncoder:
     """
     Initialize and return a global encoder instance
-    Default pins: CLK=14, DT=15, SW=16
-    
-    Args:
-        clk_pin: GPIO pin for CLK signal (default: 14)
-        dt_pin: GPIO pin for DT signal (default: 15)
-        sw_pin: GPIO pin for SW button (default: 16)
-    
-    Returns:
-        RotaryEncoder instance
     """
     global _encoder_instance
     _encoder_instance = RotaryEncoder(clk_pin, dt_pin, sw_pin)
@@ -148,11 +122,7 @@ def init_encoder(clk_pin: int = 14, dt_pin: int = 15, sw_pin: Optional[int] = 16
 def get_encoder() -> RotaryEncoder:
     """
     Get the global encoder instance
-    
-    Returns:
-        RotaryEncoder instance
     """
     if _encoder_instance is None:
-        # Auto-initialize with default pins if not already done
         return init_encoder()
     return _encoder_instance
