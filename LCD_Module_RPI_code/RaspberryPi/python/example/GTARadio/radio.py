@@ -1,12 +1,30 @@
 import subprocess
 import random
 import os
+import time
 
 mp3_process = None
-SHARED_BASE_PATH = '/mnt/shared/gta/'
+SHARED_BASE_PATH = '/mnt/shared/'
 
-def get_radio_stations():
-    """Dynamically discover all games and their radio stations"""
+# Cache variables
+_stations_cache = None
+_mp3_durations_cache = None
+_last_cache_update = 0
+CACHE_TIMEOUT = 30  # seconds
+
+def get_radio_stations(force_refresh=False):
+    """Dynamically discover all games and their radio stations with caching"""
+    global _stations_cache, _mp3_durations_cache, _last_cache_update
+    
+    current_time = time.time()
+    
+    # Return cached data if it's fresh and not forced to refresh
+    if (not force_refresh and 
+        _stations_cache is not None and 
+        _mp3_durations_cache is not None and
+        current_time - _last_cache_update < CACHE_TIMEOUT):
+        return _stations_cache, _mp3_durations_cache
+    
     stations = {}
     mp3_durations = {}
     
@@ -27,8 +45,12 @@ def get_radio_stations():
         stations[game_folder] = []
         
         # Find all MP3 files in the game folder
-        mp3_files = [f for f in os.listdir(game_path) if f.lower().endswith('.mp3')]
-        
+        try:
+            mp3_files = [f for f in os.listdir(game_path) if f.lower().endswith('.mp3')]
+        except PermissionError:
+            print(f"Permission denied accessing: {game_path}")
+            continue
+            
         if not mp3_files:
             print(f"No MP3 files found in {game_folder}")
             continue
@@ -44,13 +66,27 @@ def get_radio_stations():
             # Get duration (using default for now)
             mp3_durations[file_path] = 300  # Default 5 minutes
     
-    print(f"Found {len(stations)} games with stations")
+    print(f"Cache updated: Found {len(stations)} games with stations")
+    
+    # Update cache
+    _stations_cache = stations
+    _mp3_durations_cache = mp3_durations
+    _last_cache_update = current_time
+    
     return stations, mp3_durations
+
+def clear_cache():
+    """Clear the cache to force refresh on next call"""
+    global _stations_cache, _mp3_durations_cache, _last_cache_update
+    _stations_cache = None
+    _mp3_durations_cache = None
+    _last_cache_update = 0
+    print("Cache cleared")
 
 def play_radio(game_index, station_index):
     global mp3_process
     
-    # Get available stations
+    # Get available stations from cache
     stations, mp3_durations = get_radio_stations()
     
     if not stations:
@@ -89,8 +125,12 @@ def play_radio(game_index, station_index):
 
     print(f"Playing {selected_song} from frame {random_start_frame}")
 
-    # Start playback
+    # Start playback with suppressed output
     try:
-        mp3_process = subprocess.Popen(['mpg123', '-k', str(random_start_frame), '-l', '0', selected_song])
+        mp3_process = subprocess.Popen(
+            ['mpg123', '-k', str(random_start_frame), selected_song],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
     except Exception as e:
         print(f"Error starting playback: {e}")

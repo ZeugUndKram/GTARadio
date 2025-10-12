@@ -13,7 +13,7 @@ import RPi.GPIO as GPIO
 
 GPIO.setmode(GPIO.BCM)
 
-SHARED_BASE_PATH = '/mnt/shared/gta/'
+SHARED_BASE_PATH = '/mnt/shared/'
 
 # Raspberry Pi pin configuration:
 RST = 27
@@ -27,27 +27,61 @@ disp = LCD_1inch28.LCD_1inch28()
 disp.Init()
 disp.clear()
 
-def get_available_games():
-    """Get list of available games"""
-    if not os.path.exists(SHARED_BASE_PATH):
-        return []
-    return sorted([f for f in os.listdir(SHARED_BASE_PATH) 
-                  if os.path.isdir(os.path.join(SHARED_BASE_PATH, f))])
+# Cache variables
+_games_cache = None
+_station_files_cache = {}
+_image_cache = {}  # Cache for loaded images
+_last_cache_update = 0
+CACHE_TIMEOUT = 30  # seconds
 
-def get_station_files(game_index):
-    """Get MP3 files for a game"""
-    games = get_available_games()
+def get_available_games(force_refresh=False):
+    """Get list of available games with caching"""
+    global _games_cache, _last_cache_update
+    
+    current_time = time.time()
+    
+    if not force_refresh and _games_cache is not None and current_time - _last_cache_update < CACHE_TIMEOUT:
+        return _games_cache
+    
+    if not os.path.exists(SHARED_BASE_PATH):
+        _games_cache = []
+        return _games_cache
+    
+    games = sorted([f for f in os.listdir(SHARED_BASE_PATH) 
+                   if os.path.isdir(os.path.join(SHARED_BASE_PATH, f))])
+    
+    _games_cache = games
+    _last_cache_update = current_time
+    return games
+
+def get_station_files(game_index, force_refresh=False):
+    """Get MP3 files for a game with caching"""
+    global _station_files_cache
+    
+    games = get_available_games(force_refresh)
     if game_index >= len(games):
         return []
     
     game_name = games[game_index]
+    
+    # Return cached data if available
+    if not force_refresh and game_name in _station_files_cache:
+        return _station_files_cache[game_name]
+    
     game_path = os.path.join(SHARED_BASE_PATH, game_name)
     
-    return sorted([f for f in os.listdir(game_path) if f.lower().endswith('.mp3')])
+    try:
+        mp3_files = sorted([f for f in os.listdir(game_path) if f.lower().endswith('.mp3')])
+    except PermissionError:
+        print(f"Permission denied accessing: {game_path}")
+        mp3_files = []
+    
+    _station_files_cache[game_name] = mp3_files
+    return mp3_files
 
-def get_image_path(game_index, display_index):
-    """Get the path to the appropriate image based on game and station"""
-    games = get_available_games()
+def get_image_path(game_index, display_index, force_refresh=False):
+    """Get the path to the appropriate image based on game and station with caching"""
+    games = get_available_games(force_refresh)
     if game_index >= len(games):
         return None
     
@@ -59,7 +93,7 @@ def get_image_path(game_index, display_index):
         # Look for common game logo names
         game_logo_names = ['game.png', 'game.jpg', 'logo.png', 'logo.jpg', 
                           f'{game_name}.png', f'{game_name}.jpg',
-                          'cover.png', 'cover.jpg']
+                          'cover.png', 'cover.jpg', 'default.png']
         for logo_name in game_logo_names:
             logo_path = os.path.join(game_path, logo_name)
             if os.path.exists(logo_path):
@@ -68,7 +102,7 @@ def get_image_path(game_index, display_index):
         return create_default_game_image(game_name, game_path)
     
     # For stations (display_index >= 1), get the station image
-    station_files = get_station_files(game_index)
+    station_files = get_station_files(game_index, force_refresh)
     station_index = display_index - 1  # Convert to 0-based station index
     
     if station_index >= len(station_files):
@@ -78,22 +112,96 @@ def get_image_path(game_index, display_index):
     station_name = os.path.splitext(mp3_file)[0]
     
     # Look for image with same name as MP3
-    image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp']
+    image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp']
     for ext in image_extensions:
         image_path = os.path.join(game_path, station_name + ext)
         if os.path.exists(image_path):
             return image_path
     
+    # Also check for images without spaces/special characters
+    simple_name = station_name.replace(' ', '').replace('-', '').lower()
+    for ext in image_extensions:
+        try:
+            for file in os.listdir(game_path):
+                if (file.lower().startswith(simple_name) and 
+                    file.lower().endswith(ext) and
+                    not file.lower().endswith('.mp3')):
+                    image_path = os.path.join(game_path, file)
+                    return image_path
+        except PermissionError:
+            continue
+    
     # If no station image found, create a default one
     return create_default_station_image(station_name, game_path)
 
+def display_image(game_index, display_index, force_refresh=False):
+    """Display image with caching"""
+    cache_key = f"{game_index}_{display_index}"
+    
+    # Try to get from cache first
+    if not force_refresh and cache_key in _image_cache:
+        try:
+            disp.ShowImage(_image_cache[cache_key])
+            return
+        except Exception as e:
+            print(f"Error displaying cached image: {e}")
+            # Fall through to reload the image
+    
+    image_path = get_image_path(game_index, display_index, force_refresh)
+    
+    if image_path and os.path.exists(image_path):
+        try:
+            image = Image.open(image_path)
+            # Resize image to fit display if needed
+            if image.size != (240, 240):
+                image = image.resize((240, 240), Image.Resampling.LANCZOS)
+            im_r = image.rotate(0)
+            
+            # Cache the image
+            _image_cache[cache_key] = im_r
+            
+            disp.ShowImage(im_r)
+        except Exception as e:
+            print(f"Error displaying image {image_path}: {e}")
+            show_default_image()
+    else:
+        show_default_image()
+
+def show_default_image():
+    """Display a default image when no specific image is found"""
+    try:
+        image = Image.new('RGB', (240, 240), color='black')
+        draw = ImageDraw.Draw(image)
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+        except:
+            font = ImageFont.load_default()
+        draw.text((120, 120), "NO IMAGE", fill='white', font=font, anchor="mm")
+        im_r = image.rotate(0)
+        disp.ShowImage(im_r)
+    except Exception as e:
+        print(f"Error showing default image: {e}")
+
+def clear_display_cache():
+    """Clear the display cache"""
+    global _games_cache, _station_files_cache, _image_cache, _last_cache_update
+    _games_cache = None
+    _station_files_cache = {}
+    _image_cache = {}
+    _last_cache_update = 0
+    print("Display cache cleared")
+
+def display_image_delay(game_index, station_index):
+    time.sleep(0.1)  # Reduced delay
+    display_image(game_index, station_index)
+
+# Default image creation functions (same as before)
 def create_default_game_image(game_name, game_path):
     """Create a default game logo image"""
     try:
         image = Image.new('RGB', (240, 240), color='navy')
         draw = ImageDraw.Draw(image)
         
-        # Draw game name
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
         except:
@@ -115,7 +223,6 @@ def create_default_station_image(station_name, game_path):
         image = Image.new('RGB', (240, 240), color='darkgreen')
         draw = ImageDraw.Draw(image)
         
-        # Draw station name
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
         except:
@@ -149,41 +256,3 @@ def create_default_station_image(station_name, game_path):
     except Exception as e:
         print(f"Error creating default station image: {e}")
         return None
-
-def display_image(game_index, display_index):
-    image_path = get_image_path(game_index, display_index)
-    
-    if image_path and os.path.exists(image_path):
-        try:
-            image = Image.open(image_path)
-            # Resize image to fit display if needed
-            if image.size != (240, 240):
-                image = image.resize((240, 240), Image.Resampling.LANCZOS)
-            im_r = image.rotate(0)
-            disp.ShowImage(im_r)
-            print(f"Displayed: {os.path.basename(image_path)}")
-        except Exception as e:
-            print(f"Error displaying image {image_path}: {e}")
-            show_default_image()
-    else:
-        print(f"Image not found for game {game_index}, display index {display_index}")
-        show_default_image()
-
-def show_default_image():
-    """Display a default image when no specific image is found"""
-    try:
-        image = Image.new('RGB', (240, 240), color='black')
-        draw = ImageDraw.Draw(image)
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-        except:
-            font = ImageFont.load_default()
-        draw.text((120, 120), "NO IMAGE", fill='white', font=font, anchor="mm")
-        im_r = image.rotate(0)
-        disp.ShowImage(im_r)
-    except Exception as e:
-        print(f"Error showing default image: {e}")
-
-def display_image_delay(game_index, station_index):
-    time.sleep(0.5)
-    display_image(game_index, station_index)
