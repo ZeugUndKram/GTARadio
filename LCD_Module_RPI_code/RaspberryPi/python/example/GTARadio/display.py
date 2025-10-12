@@ -13,7 +13,7 @@ import RPi.GPIO as GPIO
 
 GPIO.setmode(GPIO.BCM)
 
-SHARED_BASE_PATH = '/mnt/shared/'
+SHARED_BASE_PATH = '/mnt/shared/gta/'
 
 # Raspberry Pi pin configuration:
 RST = 27
