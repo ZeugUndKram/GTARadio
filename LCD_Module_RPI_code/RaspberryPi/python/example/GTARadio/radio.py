@@ -4,7 +4,7 @@ import os
 import time
 
 mp3_process = None
-SHARED_BASE_PATH = '/mnt/shared/'
+SHARED_BASE_PATH = '/mnt/shared/gta/'
 
 # Cache variables
 _stations_cache = None

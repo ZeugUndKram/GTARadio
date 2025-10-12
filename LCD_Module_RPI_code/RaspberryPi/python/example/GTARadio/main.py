@@ -16,7 +16,7 @@ import threading
 from display import display_image, display_image_delay, clear_display_cache
 from radio import play_radio, get_radio_stations, clear_cache
 
-SHARED_BASE_PATH = '/mnt/shared/'
+SHARED_BASE_PATH = '/mnt/shared/gta/'
 
 # Game and station indices
 game_index = 0
