@@ -3,7 +3,7 @@ import random
 import os
 
 mp3_process = None
-SHARED_BASE_PATH = '/mnt/shared/'
+SHARED_BASE_PATH = '/mnt/shared/gta/'
 
 def get_radio_stations():
     """Dynamically discover all games and their radio stations"""
