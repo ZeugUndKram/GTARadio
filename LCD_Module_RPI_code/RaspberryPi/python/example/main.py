@@ -1,0 +1,186 @@
+import os
+import sys
+import time
+import logging
+import spidev as SPI
+sys.path.append("..")
+from lib import LCD_1inch28
+import RPi.GPIO as GPIO
+
+
+GPIO.setmode(GPIO.BCM)
+os.environ['DISPLAY'] = ':0'
+# Raspberry Pi pin configuration:
+
+RST = 27
+DC = 25
+BL = 18
+bus = 0
+device = 0
+logging.basicConfig(level=logging.DEBUG)
+
+PIN_CLK = 16
+PIN_DT = 15
+BUTTON_PIN = 14
+ 
+GPIO.setup(PIN_CLK, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+GPIO.setup(PIN_DT, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+
+# Benötigte Variablen werden initialisiert
+Counter = 0
+Richtung = True
+PIN_CLK_LETZTER = 0
+PIN_CLK_AKTUELL = 0
+delayTime = 0.05
+
+# Initiales Auslesen des Pin_CLK
+PIN_CLK_LETZTER = GPIO.input(PIN_CLK)
+ 
+# Diese AusgabeFunktion wird bei Signaldetektion ausgefuehrt
+def ausgabeFunktion(null): 
+    PIN_CLK_AKTUELL = GPIO.input(PIN_CLK)
+ 
+    if PIN_CLK_AKTUELL != PIN_CLK_LETZTER:
+ 
+        if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
+            hotkey('r', 'enter')
+            Richtung = True;
+        else:
+            Richtung = False
+            hotkey('l', 'enter')
+
+ 
+ 
+def CounterReset(null):
+    global Counter
+    press('a')
+    press('enter')
+ 
+# Um einen Debounce direkt zu integrieren, werden die Funktionen zur Ausgabe mittels
+# CallBack-Option vom GPIO Python Modul initialisiert
+GPIO.add_event_detect(PIN_CLK, GPIO.FALLING, callback=ausgabeFunktion, bouncetime=100)
+GPIO.add_event_detect(BUTTON_PIN, GPIO.RISING, callback=CounterReset, bouncetime=300)
+ 
+ 
+# Function to get a list of image files in the specified folder
+def get_image_files(folder):
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
+    image_files = [f for f in os.listdir(folder) if f.lower().endswith(tuple(image_extensions))]
+    return image_files
+
+# List of image folders to cycle through
+image_folders = [
+    '/home/pi/GTARadio/RadioLogos/GTASA',
+    '/home/pi/GTARadio/RadioLogos/GTAVC',
+    '/home/pi/GTARadio/RadioLogos/GTA3',
+    '/home/pi/GTARadio/RadioLogos/GTA4',
+    '/home/pi/GTARadio/RadioLogos/GTA5'
+]
+
+logo_folders = [
+    '/home/pi/GTARadio/GameLogos'
+]
+
+
+try:
+    # display with hardware SPI:
+    disp = LCD_1inch28.LCD_1inch28()
+    disp.Init()
+    disp.clear()
+
+    current_image_index = 0
+    current_folder_index = 0
+    current_image_folder = image_folders[current_folder_index]
+    current_image_files = get_image_files(current_image_folder)
+
+    if not current_image_files:
+        logging.error(f"No image files found in the folder: {current_image_folder}")
+        exit()
+
+    prev_input_time = 0
+    consecutive_a_presses = 0
+
+    while True:
+        # Load and display the current image
+        current_image_path = os.path.join(current_image_folder, current_image_files[current_image_index])
+        image = Image.open(current_image_path)
+        im_r = image.rotate(0)
+        disp.ShowImage(im_r)
+
+        user_input = input("Press 'L' for previous image, 'A' to change folder, 'R' for next image, or 'Q' to quit: ").strip().lower()
+
+        if user_input == 'q':
+            break
+            
+        #LinksRechts
+        elif user_input == 'l':
+            current_image_index = (current_image_index - 1) % len(current_image_files)
+
+        elif user_input == 'r':
+            current_image_index = (current_image_index + 1) % len(current_image_files)
+
+            
+        #Radioswitch
+        elif user_input == 'a':
+            current_time = time.time()
+            if current_time - prev_input_time <= 1:
+                consecutive_a_presses += 1
+                if consecutive_a_presses > 1:
+                    # Switch to the next folder in the list
+                    current_folder_index = (current_folder_index + 1) % len(image_folders)
+                    current_image_folder = image_folders[current_folder_index]
+                    current_image_files = get_image_files(current_image_folder)
+                    current_image_index = 0
+                else:
+                    consecutive_a_presses = 0
+
+            else:
+                consecutive_a_presses = 1
+
+            prev_input_time = current_time
+        
+        a_pressed_again = False
+        
+        while consecutive_a_presses == 1:
+            if current_folder_index == 0:
+                image = Image.open('/home/pi/GTARadio/GameLogos/GTASA.png')
+            elif current_folder_index == 1:
+                image = Image.open('/home/pi/GTARadio/GameLogos/GTAVC.png')
+            elif current_folder_index == 2:
+                image = Image.open('/home/pi/GTARadio/GameLogos/GTA3.png')
+            elif current_folder_index == 3:
+                image = Image.open('/home/pi/GTARadio/GameLogos/GTA4.png')
+            elif current_folder_index == 4:
+                image = Image.open('/home/pi/GTARadio/GameLogos/GTA5.png')
+
+
+            im_r = image.rotate(0)
+            disp.ShowImage(im_r)
+            
+            if user_input == 'a':
+                current_time = time.time()
+                if current_time - prev_input_time >= 1:
+                    a_pressed_again = True
+                    consecutive_a_presses = 0
+                elif current_time - prev_input_time < 1 and not a_pressed_again:
+                    a_pressed_again = True
+                    current_folder_index = (current_folder_index + 1) % len(image_folders)
+                    current_image_folder = image_folders[current_folder_index]
+                    current_image_files = get_image_files(current_image_folder)
+                    current_image_index = 0
+            else:
+                a_pressed_again = False
+        
+        time.sleep(delayTime)
+
+
+
+
+except IOError as e:
+    logging.error(e)
+except KeyboardInterrupt:
+    pass
+finally:
+    disp.module_exit()
+    logging.info("quit:")

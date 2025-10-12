@@ -1,0 +1,457 @@
+#!/usr/bin/python
+# -*- coding: UTF-8 -*-
+#import chardet
+import os
+import sys
+import time
+import logging
+import spidev as SPI
+sys.path.append("..")
+from lib import LCD_1inch28
+from PIL import Image,ImageDraw,ImageFont
+import RPi.GPIO as GPIO
+GPIO.setmode(GPIO.BCM)
+from evdev import UInput, ecodes as e
+import subprocess
+import threading
+
+
+def press_key():
+    try:
+        subprocess.run(["./InputC"])  # Run the C program
+    except FileNotFoundError:
+        print("Error: press_key program not found.")
+
+# Raspberry Pi pin configuration:
+RST = 27
+DC = 25
+BL = 18
+bus = 0
+device = 0
+logging.basicConfig(level=logging.DEBUG)
+
+PIN_CLK = 16
+PIN_DT = 15
+BUTTON_PIN = 14
+
+GPIO.setup(PIN_CLK, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+GPIO.setup(PIN_DT, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+
+# Benötigte Variablen werden initialisiert
+Counter = 0
+Richtung = True
+PIN_CLK_LETZTER = 0
+PIN_CLK_AKTUELL = 0
+delayTime = 0.02
+
+
+# Initiales Auslesen des Pin_CLK
+PIN_CLK_LETZTER = GPIO.input(PIN_CLK)
+
+
+# Diese AusgabeFunktion wird bei Signaldetektion ausgefuehrt
+def ausgabeFunktion(null):
+    PIN_CLK_AKTUELL = GPIO.input(PIN_CLK)
+
+    if PIN_CLK_AKTUELL != PIN_CLK_LETZTER:
+
+        if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
+            press_key()
+            Richtung = True;
+        else:
+            Richtung = False
+            print("l")
+
+
+def CounterReset(null):
+    global Counter
+    print("a")
+
+# Um einen Debounce direkt zu integrieren, werden die Funktionen zur Ausgabe mittels
+# CallBack-Option vom GPIO Python Modul initialisiert
+GPIO.add_event_detect(PIN_CLK, GPIO.FALLING, callback=ausgabeFunktion, bouncetime=100)
+GPIO.add_event_detect(BUTTON_PIN, GPIO.RISING, callback=CounterReset, bouncetime=300)
+
+# Function to get a list of image files in the specified folder
+def get_image_files(folder):
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
+    image_files = [f for f in os.listdir(folder) if f.lower().endswith(tuple(image_extensions))]
+    return image_files
+
+
+# List of image folders to cycle through
+image_folders = [
+    '/home/viktor/LCD_Module_RPI_code/RaspberryPi/python/RadioLogos/GTA3',
+    '/home/viktor/LCD_Module_RPI_code/RaspberryPi/python/RadioLogos/GTAVC',
+    '/home/viktor/LCD_Module_RPI_code/RaspberryPi/python/RadioLogos/GTASA',
+    '/home/viktor/LCD_Module_RPI_code/RaspberryPi/python/RadioLogos/GTA4',
+    '/home/viktor/LCD_Module_RPI_code/RaspberryPi/python/RadioLogos/GTA5',
+]
+
+logo_folders = [
+    '/home/viktor/LCD_Module_RPI_code/RaspberryPi/python/GameLogos'
+]
+
+penisgeht = False
+
+def penis():
+    global penisgeht
+    while True:
+        currently = time.time()
+        timesince = currently - start_time
+        time.sleep(0.5)
+        print(timesince)
+        print(penisgeht)
+        if(timesince > 5):
+            penisgeht = True
+
+        while penisgeht == True:
+            if("GTA3" in current_image_path):
+                if("CHAT" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA3/CHAT.mp3'")
+                if("CLASS" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA3/CLASS.mp3'")
+                if("FLASH" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA3/FLASH.mp3'")
+                if("GAME" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA3/GAME.mp3'")
+                if("HEAD" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA3/HEAD.mp3'")
+                if("KJAH" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA3/KJAH.mp3'")
+                if("LIPS" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA3/LIPS.mp3'")
+                if("MSX" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA3/MSX.mp3'")
+                if("RISE" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA3/RISE.mp3'")
+            elif("GTAVC" in current_image_path):
+                if("EMOTION" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTAVC/EMOTION.mp3'")
+                if("ESPANT" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTAVC/ESPANT.mp3'")
+                if("FEVER" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTAVC/FEVER.mp3'")
+                if("FLASH" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTAVC/FLASH.mp3'")
+                if("KCHAT" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTAVC/KCHAT.mp3'")
+                if("VCPR" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTAVC/VCPR.mp3'")
+                if("VROCK" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTAVC/VROCK.mp3'")
+                if("WAVE" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTAVC/WAVE.mp3'")
+                if("WILD" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTAVC/WILD.mp3'")
+            elif("GTASA" in current_image_path):
+                if("Bounce FM" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTASA/Bounce FM.mp3'")
+                if("CSR 103.9" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTASA/CSR 103.9.mp3'")
+                if("K-DST" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTASA/K-DST.mp3'")
+                if("K-JAH West" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTASA/K-JAH West.mp3'")
+                if("K-Rose" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTASA/K-Rose.mp3'")
+                if("Master Sounds 98.3" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTASA/Master Sounds 98.3.mp3'")
+                if("Playback FM" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTASA/Playback FM.mp3'")
+                if("Radio Los Santos" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTASA/Radio Los Santos.mp3'")
+                if("Radio X" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTASA/Radio X.mp3'")
+                if("SF-UR" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTASA/SF-UR.mp3'")
+                if("West Coast Talk Radio" in current_image_path):
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTASA/West Coast Talk Radio.mp3'")
+            elif("GTA4" in current_image_path):
+                if "Electro-Choc" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Electro-Choc.mp3'")
+                if "Integrity 2.0" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Integrity 2.0.mp3'")
+                if "Jazz Nation Radio 108.5" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Jazz Nation Radio 108.5.mp3'")
+                if "K109 The Studio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/K109 The Studio.mp3'")
+                if "Liberty City Hardcore" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Liberty City Hardcore.mp3'")
+                if "Massive B Soundsystem 96.9" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Massive B Soundsystem 96.9.mp3'")
+                if "Public Liberty Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Public Liberty Radio.mp3'")
+                if "Radio Broker" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Radio Broker.mp3'")
+                if "RamJam FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/RamJam FM.mp3'")
+                if "San Juan Sounds" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/San Juan Sounds.mp3'")
+                if "Self-Actualization FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Self-Actualization FM.mp3'")
+                if "Electro-Choc" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Electro-Choc.mp3'")
+                if "Integrity 2.0" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Integrity 2.0.mp3'")
+                if "Jazz Nation Radio 108.5" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Jazz Nation Radio 108.5.mp3'")
+                if "K109 The Studio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/K109 The Studio.mp3'")
+                if "Liberty City Hardcore" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Liberty City Hardcore.mp3'")
+                if "Massive B Soundsystem 96.9" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Massive B Soundsystem 96.9.mp3'")
+                if "Public Liberty Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Public Liberty Radio.mp3'")
+                if "Radio Broker" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Radio Broker.mp3'")
+                if "RamJam FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/RamJam FM.mp3'")
+                if "San Juan Sounds" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/San Juan Sounds.mp3'")
+                if "Self-Actualization FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Self-Actualization FM.mp3'")
+                if "The Beat 102.7" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/The Beat 102.7.mp3'")
+                if "The Classics 104.1" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/The Classics 104.1.mp3'")
+                if "The Journey" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/The Journey.mp3'")
+                if "The Vibe 98.8" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/The Vibe 98.8.mp3'")
+                if "Tuff Gong Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Tuff Gong Radio.mp3'")
+                if "Vice City FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Vice City FM.mp3'")
+                if "Vladivostok FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Vladivostok FM.mp3'")
+                if "WKTT Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/WKTT Radio.mp3'")
+                if "The Beat 102.7" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/The Beat 102.7.mp3'")
+                if "The Classics 104.1" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/The Classics 104.1.mp3'")
+                if "The Journey" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/The Journey.mp3'")
+                if "The Vibe 98.8" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/The Vibe 98.8.mp3'")
+                if "Tuff Gong Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Tuff Gong Radio.mp3'")
+                if "Vice City FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Vice City FM.mp3'")
+                if "Vladivostok FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/Vladivostok FM.mp3'")
+                if "WKTT Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA4/WKTT Radio.mp3'")
+            else:
+                if "Integrity 2.0" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Integrity 2.0.mp3'")
+                if "Jazz Nation Radio 108.5" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Jazz Nation Radio 108.5.mp3'")
+                if "K109 The Studio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/K109 The Studio.mp3'")
+                if "Liberty City Hardcore" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Liberty City Hardcore.mp3'")
+                if "Massive B Soundsystem 96.9" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Massive B Soundsystem 96.9.mp3'")
+                if "Public Liberty Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Public Liberty Radio.mp3'")
+                if "Radio Broker" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Radio Broker.mp3'")
+                if "RamJam FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/RamJam FM.mp3'")
+                if "San Juan Sounds" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/San Juan Sounds.mp3'")
+                if "Self-Actualization FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Self-Actualization FM.mp3'")
+                if "Electro-Choc" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Electro-Choc.mp3'")
+                if "Integrity 2.0" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Integrity 2.0.mp3'")
+                if "Jazz Nation Radio 108.5" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Jazz Nation Radio 108.5.mp3'")
+                if "K109 The Studio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/K109 The Studio.mp3'")
+                if "Liberty City Hardcore" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Liberty City Hardcore.mp3'")
+                if "Massive B Soundsystem 96.9" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Massive B Soundsystem 96.9.mp3'")
+                if "Public Liberty Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Public Liberty Radio.mp3'")
+                if "Radio Broker" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Radio Broker.mp3'")
+                if "RamJam FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/RamJam FM.mp3'")
+                if "San Juan Sounds" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/San Juan Sounds.mp3'")
+                if "Self-Actualization FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Self-Actualization FM.mp3'")
+                if "The Beat 102.7" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/The Beat 102.7.mp3'")
+                if "The Classics 104.1" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/The Classics 104.1.mp3'")
+                if "The Journey" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/The Journey.mp3'")
+                if "The Vibe 98.8" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/The Vibe 98.8.mp3'")
+                if "Tuff Gong Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Tuff Gong Radio.mp3'")
+                if "Vice City FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Vice City FM.mp3'")
+                if "Vladivostok FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Vladivostok FM.mp3'")
+                if "WKTT Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/WKTT Radio.mp3'")
+                if "The Beat 102.7" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/The Beat 102.7.mp3'")
+                if "The Classics 104.1" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/The Classics 104.1.mp3'")
+                if "The Journey" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/The Journey.mp3'")
+                if "The Vibe 98.8" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/The Vibe 98.8.mp3'")
+                if "Tuff Gong Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Tuff Gong Radio.mp3'")
+                if "Vice City FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Vice City FM.mp3'")
+                if "Vladivostok FM" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/Vladivostok FM.mp3'")
+                if "WKTT Radio" in current_image_path:
+                    os.system("vlc '/home/viktor/GTARadio/GTA5/GTA5/WKTT Radio.mp3'")
+
+
+
+            return
+
+try:
+    # display with hardware SPI:
+    disp = LCD_1inch28.LCD_1inch28()
+    disp.Init()
+    disp.clear()
+
+    current_image_index = 0
+    current_folder_index = 0
+    current_image_folder = image_folders[current_folder_index]
+    current_image_files = get_image_files(current_image_folder)
+
+    if not current_image_files:
+        logging.error(f"No image files found in the folder: {current_image_folder}")
+        exit()
+
+    prev_input_time = 0
+    consecutive_a_presses = 0
+
+    start_time = time.time()
+    current_image_path = ""
+
+    start_time_thread = threading.Thread(target=penis)
+    start_time_thread.daemon = True
+    start_time_thread.start()
+
+
+    while True:
+        # Load and display the current image if it has changed
+        new_image_path = os.path.join(current_image_folder, current_image_files[current_image_index])
+        current_image_path = new_image_path  # Update the current image path
+        image = Image.open(current_image_path)
+        print(current_image_path)
+        im_r = image.rotate(0)
+        disp.ShowImage(im_r)  # Record the start time of displaying the image
+
+        current_time = time.time()
+
+
+        user_input = input("Press 'L' for previous image, 'A' to change folder, 'R' for next image, or 'Q' to quit: ").strip().lower()
+
+        if user_input == 'q':
+            break
+
+        #LinksRechts
+        elif user_input == 'l':
+            start_time = time.time()
+            if penisgeht == True:
+                start_time_thread = threading.Thread(target=penis)
+                start_time_thread.daemon = True
+                start_time_thread.start()
+            penisgeht = False
+            current_image_index = (current_image_index - 1) % len(current_image_files)
+
+        elif user_input == 'r':
+            start_time = time.time()
+            if penisgeht == True:
+                start_time_thread = threading.Thread(target=penis)
+                start_time_thread.daemon = True
+                start_time_thread.start()
+            penisgeht = False
+            current_image_index = (current_image_index + 1) % len(current_image_files)
+
+
+        #Radioswitch
+        elif user_input == 'a':
+            start_time = time.time()
+            if penisgeht == True:
+                start_time_thread = threading.Thread(target=penis)
+                start_time_thread.daemon = True
+                start_time_thread.start()
+            penisgeht = False
+            current_time = time.time()
+            if current_time - prev_input_time <= 1:
+                consecutive_a_presses += 1
+                if consecutive_a_presses > 1:
+                    # Switch to the next folder in the list
+                    current_folder_index = (current_folder_index + 1) % len(image_folders)
+                    current_image_folder = image_folders[current_folder_index]
+                    current_image_files = get_image_files(current_image_folder)
+                    current_image_index = 0
+                    start=time = time.time()
+                else:
+                    consecutive_a_presses = 0
+
+            else:
+                consecutive_a_presses = 1
+
+            prev_input_time = current_time
+
+        a_pressed_again = False
+
+        while consecutive_a_presses == 1:
+            if current_folder_index == 0:
+                image = Image.open('/home/viktor/LCD_Module_RPI_code/RaspberryPi/python/GameLogos/GTA3.png')
+            elif current_folder_index == 1:
+                image = Image.open('/home/viktor/LCD_Module_RPI_code/RaspberryPi/python/GameLogos/GTAVC.png')
+            elif current_folder_index == 2:
+                image = Image.open('/home/viktor/LCD_Module_RPI_code/RaspberryPi/python/GameLogos/GTASA.png')
+            elif current_folder_index == 3:
+                image = Image.open('/home/viktor/LCD_Module_RPI_code/RaspberryPi/python/GameLogos/GTA4.png')
+            elif current_folder_index == 4:
+                image = Image.open('/home/viktor/LCD_Module_RPI_code/RaspberryPi/python/GameLogos/GTA5.png')
+
+
+            im_r = image.rotate(0)
+            disp.ShowImage(im_r)
+
+            if user_input == 'a':
+                current_time = time.time()
+                if current_time - prev_input_time >= 1:
+                    a_pressed_again = True
+                    consecutive_a_presses = 0
+                elif current_time - prev_input_time < 1 and not a_pressed_again:
+                    a_pressed_again = True
+                    current_folder_index = (current_folder_index + 1) % len(image_folders)
+                    current_image_folder = image_folders[current_folder_index]
+                    current_image_files = get_image_files(current_image_folder)
+                    current_image_index = 0
+            else:
+                a_pressed_again = False
+
+        time.sleep(delayTime)
+
+except IOError as e:
+    logging.error(e)
+except KeyboardInterrupt:
+    pass
+finally:
+    disp.module_exit()
+    logging.info("quit:")
