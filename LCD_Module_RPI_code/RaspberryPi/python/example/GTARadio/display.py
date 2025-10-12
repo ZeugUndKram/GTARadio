@@ -134,19 +134,82 @@ def get_image_path(game_index, display_index, force_refresh=False):
     # If no station image found, create a default one
     return create_default_station_image(station_name, game_path)
 
-def display_image(game_index, display_index, force_refresh=False):
-    """Display image with caching"""
-    cache_key = f"{game_index}_{display_index}"
+def display_settings_image(setting_index):
+    """Display settings images"""
+    settings_images = [
+        'playlist.png'
+    ]
     
-    # Try to get from cache first
-    if not force_refresh and cache_key in _image_cache:
+    if setting_index < len(settings_images):
+        image_path = os.path.join(os.path.dirname(__file__), 'assets', settings_images[setting_index])
+        if os.path.exists(image_path):
+            try:
+                image = Image.open(image_path)
+                if image.size != (240, 240):
+                    image = image.resize((240, 240), Image.Resampling.LANCZOS)
+                im_r = image.rotate(0)
+                disp.ShowImage(im_r)
+                print(f"Displayed settings: {settings_images[setting_index]}")
+            except Exception as e:
+                print(f"Error displaying settings image: {e}")
+                show_default_image()
+        else:
+            show_default_image()
+    else:
+        show_default_image()
+
+def display_playlist_name(playlist_name):
+    """Display playlist name when no logo exists"""
+    try:
+        image = Image.new('RGB', (240, 240), color='darkblue')
+        draw = ImageDraw.Draw(image)
+        
         try:
-            disp.ShowImage(_image_cache[cache_key])
-            return
-        except Exception as e:
-            print(f"Error displaying cached image: {e}")
-            # Fall through to reload the image
+            font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+            font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+        except:
+            font_large = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+        
+        # Display "SELECT PLAYLIST" at top
+        draw.text((120, 50), "SELECT PLAYLIST", fill='yellow', font=font_small, anchor="mm")
+        
+        # Split playlist name if too long
+        words = playlist_name.split()
+        lines = []
+        current_line = ""
+        
+        for word in words:
+            test_line = current_line + " " + word if current_line else word
+            if len(test_line) < 15:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+        if current_line:
+            lines.append(current_line)
+        
+        # Draw playlist name lines
+        y_pos = 120 - (len(lines) * 15)
+        for line in lines:
+            draw.text((120, y_pos), line, fill='white', font=font_large, anchor="mm")
+            y_pos += 30
+        
+        im_r = image.rotate(0)
+        disp.ShowImage(im_r)
+    except Exception as e:
+        print(f"Error displaying playlist name: {e}")
+        show_default_image()
+
+def display_image(game_index, display_index, force_refresh=False):
+    """Display image with support for settings mode"""
+    if game_index == -1:
+        # Settings mode
+        display_settings_image(display_index)
+        return
     
+    # Normal game/station display
     image_path = get_image_path(game_index, display_index, force_refresh)
     
     if image_path and os.path.exists(image_path):
@@ -158,14 +221,29 @@ def display_image(game_index, display_index, force_refresh=False):
             im_r = image.rotate(0)
             
             # Cache the image
+            cache_key = f"{game_index}_{display_index}"
             _image_cache[cache_key] = im_r
             
             disp.ShowImage(im_r)
         except Exception as e:
             print(f"Error displaying image {image_path}: {e}")
-            show_default_image()
+            # If it's a game logo that failed, show playlist name instead
+            if display_index == 0:
+                games = get_available_games()
+                if game_index < len(games):
+                    display_playlist_name(games[game_index])
+            else:
+                show_default_image()
     else:
-        show_default_image()
+        # If no image found and it's a game logo, show playlist name
+        if display_index == 0:
+            games = get_available_games()
+            if game_index < len(games):
+                display_playlist_name(games[game_index])
+            else:
+                show_default_image()
+        else:
+            show_default_image()
 
 def show_default_image():
     """Display a default image when no specific image is found"""
@@ -195,7 +273,7 @@ def display_image_delay(game_index, station_index):
     time.sleep(0.1)  # Reduced delay
     display_image(game_index, station_index)
 
-# Default image creation functions (same as before)
+# Default image creation functions
 def create_default_game_image(game_name, game_path):
     """Create a default game logo image"""
     try:
