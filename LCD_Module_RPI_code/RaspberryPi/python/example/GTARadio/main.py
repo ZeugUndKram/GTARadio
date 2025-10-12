@@ -20,11 +20,16 @@ from PIL import Image, ImageDraw, ImageFont
 from display import display_image, display_image_delay, clear_display_cache
 from radio import play_radio, get_radio_stations, clear_cache
 
-SHARED_BASE_PATH = '/mnt/shared/'
+# Always use this directory
+SHARED_BASE_PATH = '/mnt/shared/gta/'
+
+# Create directory if it doesn't exist
+os.makedirs(SHARED_BASE_PATH, exist_ok=True)
+print(f"Using directory: {SHARED_BASE_PATH}")
 
 # Game and station indices
 game_index = 0
-station_index = 0  # 0 = game logo, 1+ = stations
+station_index = 1  # Start at first station (1), not game logo (0)
 
 # Raspberry Pi pin configuration:
 RST = 27
@@ -70,15 +75,15 @@ def get_station_count(game_index):
     """Get the number of stations in a game from cache"""
     stations, _ = get_radio_stations()
     if not stations:
-        return 1  # At least show game logo
+        return 0
     
     game_folders = sorted(stations.keys())
     
     if game_index >= len(game_folders):
-        return 1
+        return 0
     
     game_name = game_folders[game_index]
-    return len(stations[game_name]) + 1  # +1 for game logo
+    return len(stations[game_name])
 
 def update_display_and_audio(new_station_index):
     """Update display and audio"""
@@ -86,22 +91,31 @@ def update_display_and_audio(new_station_index):
     station_index = new_station_index
     
     display_image(game_index, station_index)
-    if station_index > 0:  # Only play if it's a station (not game logo)
-        play_radio(game_index, station_index - 1)
+    play_radio(game_index, station_index - 1)  # -1 because stations start at 0 for radio
     
     print(f"Game: {game_index}, Station: {station_index}")
 
 def next_station():
     """Move to next station"""
     station_count = get_station_count(game_index)
-    new_station_index = (station_index + 1) % station_count
-    update_display_and_audio(new_station_index)
+    if station_count > 0:
+        new_station_index = station_index + 1
+        if new_station_index > station_count:
+            new_station_index = 1  # Wrap around to first station
+        update_display_and_audio(new_station_index)
+    else:
+        print("No stations available")
 
 def previous_station():
     """Move to previous station"""
     station_count = get_station_count(game_index)
-    new_station_index = (station_index - 1) % station_count
-    update_display_and_audio(new_station_index)
+    if station_count > 0:
+        new_station_index = station_index - 1
+        if new_station_index < 1:
+            new_station_index = station_count  # Wrap around to last station
+        update_display_and_audio(new_station_index)
+    else:
+        print("No stations available")
 
 def next_game():
     """Move to next game"""
@@ -109,14 +123,35 @@ def next_game():
     game_count = get_game_count()
     if game_count > 0:
         game_index = (game_index + 1) % game_count
-        station_index = 0  # Show game logo when switching games
+        station_index = 1  # Start at first station
         
         # Clear cache when changing games to ensure fresh data
         clear_cache()
         clear_display_cache()
         
         display_image(game_index, station_index)
+        play_radio(game_index, station_index - 1)
         print(f"Switched to game: {game_index}")
+    else:
+        print("No games available")
+
+def previous_game():
+    """Move to previous game"""
+    global game_index, station_index
+    game_count = get_game_count()
+    if game_count > 0:
+        game_index = (game_index - 1) % game_count
+        station_index = 1  # Start at first station
+        
+        # Clear cache when changing games to ensure fresh data
+        clear_cache()
+        clear_display_cache()
+        
+        display_image(game_index, station_index)
+        play_radio(game_index, station_index - 1)
+        print(f"Switched to game: {game_index}")
+    else:
+        print("No games available")
 
 def print_help():
     """Print available commands"""
@@ -137,7 +172,7 @@ def print_help():
         current_game = game_folders[game_index] if game_index < len(game_folders) else "Unknown"
         station_count = get_station_count(game_index)
         print(f"  Game: {current_game} ({game_index + 1}/{len(game_folders)})")
-        print(f"  Station: {station_index}/{station_count - 1}")
+        print(f"  Station: {station_index}/{station_count}")
     print("============================\n")
 
 def get_key():
@@ -188,46 +223,32 @@ def terminal_control():
             elif key in ['1', '2', '3', '4', '5', '6', '7', '8', '9']:
                 station_num = int(key)
                 station_count = get_station_count(game_index)
-                if station_num < station_count:
+                if 1 <= station_num <= station_count:
                     update_display_and_audio(station_num)
                 else:
-                    print(f"Station {station_num} not available (max: {station_count - 1})")
+                    print(f"Station {station_num} not available (max: {station_count})")
                     
         except Exception as e:
             print(f"Error in terminal control: {e}")
 
-def previous_game():
-    """Move to previous game"""
-    global game_index, station_index
-    game_count = get_game_count()
-    if game_count > 0:
-        game_index = (game_index - 1) % game_count
-        station_index = 0  # Show game logo when switching games
-        
-        # Clear cache when changing games to ensure fresh data
-        clear_cache()
-        clear_display_cache()
-        
-        display_image(game_index, station_index)
-        print(f"Switched to game: {game_index}")
-
 # Rotary encoder functions (only if available)
 if ROTARY_ENCODER_AVAILABLE:
     def ausgabeFunktion(null):
+        global PIN_CLK_LETZTER
+        
         PIN_CLK_AKTUELL = GPIO.input(PIN_CLK)
 
         if PIN_CLK_AKTUELL != PIN_CLK_LETZTER:
             station_count = get_station_count(game_index)
             
             if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
-                # Turning right
-                new_station_index = (station_index + 1) % station_count
+                # Turning right - next station
+                next_station()
             else:
-                # Turning left
-                new_station_index = (station_index - 1) % station_count
+                # Turning left - previous station
+                previous_station()
             
-            # Use threading for non-blocking display updates
-            threading.Thread(target=update_display_and_audio, args=(new_station_index,)).start()
+        PIN_CLK_LETZTER = PIN_CLK_AKTUELL
 
     def CounterReset(null):
         global last_reset_time
@@ -237,7 +258,7 @@ if ROTARY_ENCODER_AVAILABLE:
         last_reset_time = current_time
 
     # Setup interrupts with longer bounce time for better performance
-    GPIO.add_event_detect(PIN_CLK, GPIO.FALLING, callback=ausgabeFunktion, bouncetime=200)
+    GPIO.add_event_detect(PIN_CLK, GPIO.BOTH, callback=ausgabeFunktion, bouncetime=200)
     GPIO.add_event_detect(BUTTON_PIN, GPIO.RISING, callback=CounterReset, bouncetime=500)
 
 # Start terminal control in a separate thread
@@ -251,6 +272,10 @@ if ROTARY_ENCODER_AVAILABLE:
 else:
     print("Rotary encoder: DISABLED (using keyboard controls only)")
 print("Press 'H' for help with keyboard controls")
+
+# Initial playback
+if get_station_count(game_index) > 0:
+    play_radio(game_index, station_index - 1)
 
 try:
     while True:
