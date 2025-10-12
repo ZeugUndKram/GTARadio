@@ -176,15 +176,34 @@ def print_help():
     print("============================\n")
 
 def get_key():
-    """Get a single keypress without requiring Enter"""
+    """Get a single keypress including arrow keys"""
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     try:
         tty.setraw(sys.stdin.fileno())
+        
+        # Read first character
         ch = sys.stdin.read(1)
+        
+        # If it's an escape character, check for arrow keys
+        if ch == '\x1b':
+            # Read the next two characters
+            ch2 = sys.stdin.read(1)
+            ch3 = sys.stdin.read(1)
+            
+            if ch2 == '[':
+                if ch3 == 'A':  # Up arrow
+                    return 'UP'
+                elif ch3 == 'B':  # Down arrow
+                    return 'DOWN'
+                elif ch3 == 'C':  # Right arrow
+                    return 'RIGHT'
+                elif ch3 == 'D':  # Left arrow
+                    return 'LEFT'
+        
+        return ch
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    return ch
 
 def terminal_control():
     """Handle terminal input in a separate thread"""
@@ -198,16 +217,20 @@ def terminal_control():
                 print("\nShutting down...")
                 os._exit(0)
                 
-            elif key in ['\x1b[C', 'd', 'D']:  # Right arrow or D
+            elif key in ['RIGHT', 'd', 'D']:  # Right arrow or D
+                print("Next station")
                 next_station()
                 
-            elif key in ['\x1b[D', 'a', 'A']:  # Left arrow or A
+            elif key in ['LEFT', 'a', 'A']:  # Left arrow or A
+                print("Previous station")
                 previous_station()
                 
-            elif key in ['\x1b[A', 'w', 'W']:  # Up arrow or W
+            elif key in ['UP', 'w', 'W']:  # Up arrow or W
+                print("Next game")
                 next_game()
                 
-            elif key in ['\x1b[B', 's', 'S']:  # Down arrow or S
+            elif key in ['DOWN', 's', 'S']:  # Down arrow or S
+                print("Previous game")
                 previous_game()
                 
             elif key in ['h', 'H']:
@@ -227,6 +250,8 @@ def terminal_control():
                     update_display_and_audio(station_num)
                 else:
                     print(f"Station {station_num} not available (max: {station_count})")
+            else:
+                print(f"Unknown key: {repr(key)}")
                     
         except Exception as e:
             print(f"Error in terminal control: {e}")
@@ -239,8 +264,6 @@ if ROTARY_ENCODER_AVAILABLE:
         PIN_CLK_AKTUELL = GPIO.input(PIN_CLK)
 
         if PIN_CLK_AKTUELL != PIN_CLK_LETZTER:
-            station_count = get_station_count(game_index)
-            
             if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
                 # Turning right - next station
                 next_station()
