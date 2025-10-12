@@ -3,25 +3,26 @@ import sys
 import time
 import logging
 import spidev as SPI
-# Adjust the path to point to the top-level directory
+import RPi.GPIO as GPIO
+
+GPIO.setmode(GPIO.BCM)
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from lib import LCD_1inch28
 from PIL import Image, ImageDraw, ImageFont
-import RPi.GPIO as GPIO
-GPIO.setmode(GPIO.BCM)
 from evdev import UInput, ecodes as e
 import subprocess
 import threading
 
 from display import display_image, display_image_delay
-from radio import play_radio
+from radio import play_radio, get_radio_stations
 
-folder_index = 4
+SHARED_BASE_PATH = '/mnt/shared/'
 
-image_index = 1
-channel_index = 0
-song_index = 0
+# Game and station indices
+game_index = 0
+station_index = 1
 
 # Raspberry Pi pin configuration:
 RST = 27
@@ -35,157 +36,101 @@ PIN_CLK = 16
 PIN_DT = 15
 BUTTON_PIN = 14
 
-GPIO.setup(PIN_CLK, GPIO.IN, pull_up_down = GPIO.PUD_UP)
-GPIO.setup(PIN_DT, GPIO.IN, pull_up_down = GPIO.PUD_UP)
-GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+GPIO.setup(PIN_CLK, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(PIN_DT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-
-# Benötigte Variablen werden initialisiert
+# Rotary encoder variables
 Counter = 0
 Richtung = True
 PIN_CLK_LETZTER = 0
 PIN_CLK_AKTUELL = 0
 delayTime = 0.02
 
-
-# Initiales Auslesen des Pin_CLK
+# Initial pin state
 PIN_CLK_LETZTER = GPIO.input(PIN_CLK)
 
 last_reset_time = 0
 reset_pressed = False
 
-display_image(folder_index, image_index)
-play_radio(folder_index, image_index)
+def get_game_count():
+    """Get the number of available games"""
+    if not os.path.exists(SHARED_BASE_PATH):
+        return 0
+    return len([f for f in os.listdir(SHARED_BASE_PATH) 
+                if os.path.isdir(os.path.join(SHARED_BASE_PATH, f))])
 
+def get_station_count(game_index):
+    """Get the number of stations in a game"""
+    stations, _ = get_radio_stations()
+    game_folders = sorted(stations.keys())
+    
+    if game_index >= len(game_folders):
+        return 0
+    
+    game_name = game_folders[game_index]
+    return len(stations[game_name])
 
-# Diese AusgabeFunktion wird bei Signaldetektion ausgefuehrt
+# Initial display and playback
+display_image(game_index, station_index)
+play_radio(game_index, station_index)
+
 def ausgabeFunktion(null):
-    global image_index, folder_size, folder_size
+    global station_index, game_index
+    
     PIN_CLK_AKTUELL = GPIO.input(PIN_CLK)
 
     if PIN_CLK_AKTUELL != PIN_CLK_LETZTER:
-        if folder_index == 0:
-            if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
-                image_index += 1
-                if image_index > 9:
-                    image_index = 1
-                display_image(folder_index, image_index)
-                play_radio(folder_index, image_index)
-                print("r")
-                Richtung = True;
-            else:
-                image_index -= 1
-                if image_index < 1:
-                    image_index = 9
-                display_image(folder_index, image_index)
-                play_radio(folder_index, image_index)
-                Richtung = False
-                print("l")
-        if folder_index == 1:
-            if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
-                image_index += 1
-                if image_index > 9:
-                    image_index = 1
-                display_image(folder_index, image_index)
-                play_radio(folder_index, image_index)
-                print("r")
-                Richtung = True;
-            else:
-                image_index -= 1
-                if image_index < 1:
-                    image_index = 9
-                display_image(folder_index, image_index)
-                play_radio(folder_index, image_index)
-                Richtung = False
-                print("l")
-        if folder_index == 2:
-            if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
-                image_index += 1
-                if image_index > 11:
-                    image_index = 1
-                display_image(folder_index, image_index)
-                play_radio(folder_index, image_index)
-                print("r")
-                Richtung = True;
-            else:
-                image_index -= 1
-                if image_index < 1:
-                    image_index = 11
-                display_image(folder_index, image_index)
-                play_radio(folder_index, image_index)
-                Richtung = False
-                print("l")
-        if folder_index == 3:
-            if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
-                image_index += 1
-                if image_index > 20:
-                    image_index = 1
-                display_image(folder_index, image_index)
-                play_radio(folder_index, image_index)
-                print("r")
-                Richtung = True;
-            else:
-                image_index -= 1
-                if image_index < 1:
-                    image_index = 20
-                display_image(folder_index, image_index)
-                play_radio(folder_index, image_index)
-                Richtung = False
-                print("l")
-        if folder_index == 4:
-            if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
-                image_index += 1
-                if image_index > 18:
-                    image_index = 1
-                display_image(folder_index, image_index)
-                play_radio(folder_index, image_index)
-                print("r")
-                Richtung = True;
-            else:
-                image_index -= 1
-                if image_index < 1:
-                    image_index = 18
-                display_image(folder_index, image_index)
-                play_radio(folder_index, image_index)
-                Richtung = False
-                print("l")
+        station_count = get_station_count(game_index)
+        
+        if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
+            # Turning right
+            station_index += 1
+            if station_index >= station_count:
+                station_index = 0
+            display_image(game_index, station_index)
+            if station_index > 0:  # Only play if it's a station (not game logo)
+                play_radio(game_index, station_index - 1)
+            print("r")
+            Richtung = True
+        else:
+            # Turning left
+            station_index -= 1
+            if station_index < 0:
+                station_index = station_count - 1
+            display_image(game_index, station_index)
+            if station_index > 0:  # Only play if it's a station (not game logo)
+                play_radio(game_index, station_index - 1)
+            Richtung = False
+            print("l")
 
 def CounterReset(null):
-    global last_reset_time, folder_index, Counter
-
+    global last_reset_time, game_index, station_index
+    
     current_time = time.time()
     if current_time - last_reset_time < 2:
-        folder_index += 1
-        if folder_index > 4:
-            folder_index = 0
-        threading.Thread(target=display_image_delay, args=(folder_index,image_index)).start()
-    Counter = 0
-    display_image(folder_index, 0)
+        # Double click - change game
+        game_count = get_game_count()
+        game_index += 1
+        if game_index >= game_count:
+            game_index = 0
+        station_index = 0  # Show game logo when switching games
+        threading.Thread(target=display_image_delay, args=(game_index, station_index)).start()
+    
+    station_index = 0
+    display_image(game_index, station_index)
     last_reset_time = current_time
     print("a")
 
-# CallBack-Option vom GPIO Python Modul initialisiert
+# Setup interrupts
 GPIO.add_event_detect(PIN_CLK, GPIO.FALLING, callback=ausgabeFunktion, bouncetime=100)
 GPIO.add_event_detect(BUTTON_PIN, GPIO.RISING, callback=CounterReset, bouncetime=300)
 
-
-
 try:
-
     while True:
-        user_input = input("Press 'L' for previous image, 'A' to change folder, 'R' for next image, or 'Q' to quit: ")
-
-        if user_input == 'q':
+        user_input = input("Press 'Q' to quit: ")
+        if user_input.lower() == 'q':
             break
-        elif user_input == 'l':
-            break
-        elif user_input == 'r':
-            break
-
-        #Radioswitch
-        elif user_input == 'a':
-            break
-
         time.sleep(delayTime)
 
 except IOError as e:
@@ -194,4 +139,4 @@ except KeyboardInterrupt:
     pass
 finally:
     logging.info("quit:")
-
+    GPIO.cleanup()
