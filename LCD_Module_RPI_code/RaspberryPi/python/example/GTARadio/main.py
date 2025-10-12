@@ -19,7 +19,7 @@ from display import display_image, display_image_delay
 from radio import play_radio, get_radio_stations
 
 SHARED_BASE_PATH = '/mnt/shared/'
-
+#Test
 # Game and station indices
 game_index = 0
 station_index = 1
