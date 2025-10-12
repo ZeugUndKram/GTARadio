@@ -19,10 +19,10 @@ from display import display_image, display_image_delay
 from radio import play_radio, get_radio_stations
 
 SHARED_BASE_PATH = '/mnt/shared/'
-#Test
+
 # Game and station indices
 game_index = 0
-station_index = 1
+station_index = 0  # 0 = game logo, 1+ = stations
 
 # Raspberry Pi pin configuration:
 RST = 27
@@ -63,17 +63,19 @@ def get_game_count():
 def get_station_count(game_index):
     """Get the number of stations in a game"""
     stations, _ = get_radio_stations()
+    if not stations:
+        return 1  # At least show game logo
+    
     game_folders = sorted(stations.keys())
     
     if game_index >= len(game_folders):
-        return 0
+        return 1
     
     game_name = game_folders[game_index]
-    return len(stations[game_name])
+    return len(stations[game_name]) + 1  # +1 for game logo
 
-# Initial display and playback
+# Initial display (show game logo)
 display_image(game_index, station_index)
-play_radio(game_index, station_index)
 
 def ausgabeFunktion(null):
     global station_index, game_index
@@ -90,8 +92,8 @@ def ausgabeFunktion(null):
                 station_index = 0
             display_image(game_index, station_index)
             if station_index > 0:  # Only play if it's a station (not game logo)
-                play_radio(game_index, station_index - 1)
-            print("r")
+                play_radio(game_index, station_index - 1)  # -1 because stations start at 0 for radio
+            print(f"Game: {game_index}, Station: {station_index}")
             Richtung = True
         else:
             # Turning left
@@ -100,9 +102,9 @@ def ausgabeFunktion(null):
                 station_index = station_count - 1
             display_image(game_index, station_index)
             if station_index > 0:  # Only play if it's a station (not game logo)
-                play_radio(game_index, station_index - 1)
+                play_radio(game_index, station_index - 1)  # -1 because stations start at 0 for radio
             Richtung = False
-            print("l")
+            print(f"Game: {game_index}, Station: {station_index}")
 
 def CounterReset(null):
     global last_reset_time, game_index, station_index
@@ -111,32 +113,31 @@ def CounterReset(null):
     if current_time - last_reset_time < 2:
         # Double click - change game
         game_count = get_game_count()
-        game_index += 1
-        if game_index >= game_count:
-            game_index = 0
-        station_index = 0  # Show game logo when switching games
-        threading.Thread(target=display_image_delay, args=(game_index, station_index)).start()
+        if game_count > 0:
+            game_index = (game_index + 1) % game_count
+            station_index = 0  # Show game logo when switching games
+            display_image(game_index, station_index)
+            print(f"Switched to game: {game_index}")
     
-    station_index = 0
-    display_image(game_index, station_index)
     last_reset_time = current_time
-    print("a")
+    print("Button pressed")
 
 # Setup interrupts
 GPIO.add_event_detect(PIN_CLK, GPIO.FALLING, callback=ausgabeFunktion, bouncetime=100)
 GPIO.add_event_detect(BUTTON_PIN, GPIO.RISING, callback=CounterReset, bouncetime=300)
 
+print("Radio system started!")
+print("Rotate encoder to browse stations, double-click button to switch games")
+
 try:
     while True:
-        user_input = input("Press 'Q' to quit: ")
-        if user_input.lower() == 'q':
-            break
-        time.sleep(delayTime)
+        # Just keep the main thread alive
+        time.sleep(1)
 
 except IOError as e:
     logging.error(e)
 except KeyboardInterrupt:
     pass
 finally:
-    logging.info("quit:")
+    logging.info("Shutting down...")
     GPIO.cleanup()
