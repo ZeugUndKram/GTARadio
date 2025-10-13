@@ -71,32 +71,26 @@ class SettingsManager:
             return True
         return False
     
-    def execute_shutdown(self):
-        """Execute system shutdown"""
-        print("Shutting down system...")
+    def show_shutdown_image(self):
+        """Display Shutdown.png image"""
         try:
-            # Stop playback first
-            self.stop_playback()
-            
-            # Display shutdown message
-            self.show_shutdown_message()
-            
-            # Wait a moment for the message to be seen
-            import time
-            time.sleep(2)
-            
-            # Execute shutdown command
-            subprocess.run(['sudo', 'shutdown', '-h', 'now'])
-            return 'shutdown'
+            shutdown_image_path = os.path.join(ASSETS_PATH, 'Shutdown.png')
+            if os.path.exists(shutdown_image_path):
+                # Use the display_image function with special parameters for shutdown
+                # We'll use game_index=-2 to indicate shutdown screen
+                display_image(-2, 0)
+                print("Displayed Shutdown.png")
+            else:
+                # Fallback to text message if Shutdown.png doesn't exist
+                self.show_shutdown_message()
         except Exception as e:
-            print(f"Error during shutdown: {e}")
-            return None
+            print(f"Error displaying shutdown image: {e}")
+            self.show_shutdown_message()
     
     def show_shutdown_message(self):
-        """Display shutdown message"""
+        """Display shutdown message as fallback"""
         try:
             from display import show_default_image
-            # Create a shutdown message screen
             import os
             import sys
             sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -123,6 +117,27 @@ class SettingsManager:
             disp.ShowImage(im_r)
         except Exception as e:
             print(f"Error showing shutdown message: {e}")
+    
+    def execute_shutdown(self):
+        """Execute system shutdown"""
+        print("Shutting down system...")
+        try:
+            # Stop playback first
+            self.stop_playback()
+            
+            # Display Shutdown.png image
+            self.show_shutdown_image()
+            
+            # Wait a moment for the image to be seen
+            import time
+            time.sleep(3)
+            
+            # Execute shutdown command
+            subprocess.run(['sudo', 'shutdown', '-h', 'now'])
+            return 'shutdown'
+        except Exception as e:
+            print(f"Error during shutdown: {e}")
+            return None
     
     def next_setting(self):
         """Move to next setting"""

@@ -286,6 +286,23 @@ def display_settings_image(setting_index):
     else:
         show_default_image()
 
+def display_shutdown_image():
+    """Display the Shutdown.png image"""
+    shutdown_image_path = os.path.join(os.path.dirname(__file__), 'assets', 'Shutdown.png')
+    if os.path.exists(shutdown_image_path):
+        try:
+            image = Image.open(shutdown_image_path)
+            if image.size != (240, 240):
+                image = image.resize((240, 240), Image.Resampling.LANCZOS)
+            im_r = image.rotate(0)
+            disp.ShowImage(im_r)
+            print("Displayed Shutdown.png")
+        except Exception as e:
+            print(f"Error displaying shutdown image: {e}")
+            show_default_image()
+    else:
+        show_default_image()
+
 def display_playlist_name(playlist_name):
     """Display playlist name when no logo exists"""
     try:
@@ -335,6 +352,10 @@ def display_image(game_index, display_index, force_refresh=False):
     if game_index == -1:
         # Settings mode
         display_settings_image(display_index)
+        return
+    elif game_index == -2:
+        # Shutdown screen
+        display_shutdown_image()
         return
     
     # Normal game/station display with MP3 cover art fallback
