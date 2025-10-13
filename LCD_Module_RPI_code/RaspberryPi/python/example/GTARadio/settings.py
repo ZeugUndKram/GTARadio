@@ -109,7 +109,7 @@ class SettingsManager:
     def next_brightness(self):
         """Cycle to next brightness level"""
         new_brightness_index = (self.current_brightness_index + 1) % 5  # 0-4
-        success = self.set_brightness(new_brightness_index)
+        success = self.set_brightness_alternative(new_brightness_index)
         if success:
             # Update the display if we're currently viewing brightness
             if (self.in_settings and not self.in_playlist_select and 
@@ -329,6 +329,47 @@ class SettingsManager:
             self.exit_settings()
             return 'exit_settings'
         return None
+
+def set_brightness_alternative(self, brightness_index):
+    """Alternative method to set display brightness"""
+    try:
+        # Map brightness index to actual brightness values
+        brightness_values = [50, 100, 150, 200, 255]  # hell_0 to hell_4
+        brightness_value = brightness_values[brightness_index]
+        
+        # Try to set brightness through the display library
+        import os
+        import sys
+        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+        from lib import LCD_1inch28
+        
+        disp = LCD_1inch28.LCD_1inch28()
+        disp.Init()
+        
+        # If the display library has a brightness method, use it
+        if hasattr(disp, 'set_brightness'):
+            disp.set_brightness(brightness_value)
+        else:
+            # Fallback: Try to write to backlight control
+            try:
+                with open('/sys/class/backlight/10-0045/brightness', 'w') as f:
+                    f.write(str(brightness_value))
+            except:
+                print("Warning: Could not set hardware brightness")
+        
+        print(f"Set brightness to level {brightness_index} (value: {brightness_value})")
+        
+        # Save the brightness level
+        self.current_brightness_index = brightness_index
+        self.save_brightness_level()
+        
+        # Update the settings list with new brightness image
+        self.update_brightness_setting()
+        
+        return True
+    except Exception as e:
+        print(f"Error setting brightness: {e}")
+        return False
 
 # Global settings manager instance
 settings_manager = SettingsManager()
