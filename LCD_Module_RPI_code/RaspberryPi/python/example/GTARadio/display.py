@@ -5,6 +5,9 @@ import sys
 import time
 import logging
 import spidev as SPI
+import tempfile
+from mutagen import File
+from mutagen.id3 import ID3, APIC
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from lib import LCD_1inch28
@@ -79,6 +82,109 @@ def get_station_files(game_index, force_refresh=False):
     _station_files_cache[game_name] = mp3_files
     return mp3_files
 
+def extract_mp3_cover(mp3_path, station_name, game_path):
+    """Extract embedded cover art from MP3 file and save as image"""
+    try:
+        audio = File(mp3_path, easy=True)
+        if audio is None:
+            return None
+        
+        cover_data = None
+        mime_type = 'image/jpeg'  # default
+        
+        # Method 1: ID3v2 APIC frames
+        try:
+            id3 = ID3(mp3_path)
+            pictures = [tag for tag in id3.values() if isinstance(tag, APIC)]
+            if pictures:
+                cover_data = pictures[0].data
+                mime_type = pictures[0].mime
+                print(f"Found ID3v2 cover art in {mp3_path}")
+        except Exception as e:
+            pass
+        
+        # Method 2: Check common tags in easyid3
+        if not cover_data and hasattr(audio, 'tags'):
+            cover_tags = [
+                'APIC:', 'cover', 'coverart', 'albumart', 
+                'metadata_block_picture', 'PICTURE', 'PIC'
+            ]
+            for tag_name in cover_tags:
+                if tag_name in audio.tags:
+                    if hasattr(audio.tags[tag_name], 'data'):
+                        cover_data = audio.tags[tag_name].data
+                    else:
+                        cover_data = audio.tags[tag_name][0]
+                    print(f"Found cover art in tag {tag_name} in {mp3_path}")
+                    break
+        
+        # Method 3: Check for embedded images in any tag
+        if not cover_data and hasattr(audio, 'tags'):
+            for tag in audio.tags.values():
+                if hasattr(tag, 'data') and len(tag.data) > 100:  # Reasonable image size
+                    # Check if it looks like image data
+                    if tag.data.startswith((b'\xff\xd8\xff', b'\x89PNG', b'GIF', b'BM')):
+                        cover_data = tag.data
+                        print(f"Found image data in tag in {mp3_path}")
+                        break
+        
+        if cover_data:
+            # Determine file extension from MIME type or data
+            extension = '.jpg'
+            if 'png' in mime_type.lower() or cover_data.startswith(b'\x89PNG'):
+                extension = '.png'
+            elif 'gif' in mime_type.lower() or cover_data.startswith(b'GIF'):
+                extension = '.gif'
+            elif 'bmp' in mime_type.lower() or cover_data.startswith(b'BM'):
+                extension = '.bmp'
+            
+            # Save extracted cover
+            cover_path = os.path.join(game_path, f"{station_name}_mp3cover{extension}")
+            
+            with open(cover_path, 'wb') as f:
+                f.write(cover_data)
+            
+            print(f"Extracted cover art: {cover_path}")
+            return cover_path
+        
+        print(f"No cover art found in {mp3_path}")
+        return None
+        
+    except Exception as e:
+        print(f"Error extracting cover art from {mp3_path}: {e}")
+        return None
+
+def get_mp3_cover_path(game_index, display_index):
+    """Get cover art path from MP3 file"""
+    games = get_available_games()
+    if game_index >= len(games):
+        return None
+    
+    game_name = games[game_index]
+    game_path = os.path.join(SHARED_BASE_PATH, game_name)
+    
+    station_files = get_station_files(game_index)
+    station_index = display_index - 1
+    
+    if station_index < len(station_files):
+        mp3_file = station_files[station_index]
+        station_name = os.path.splitext(mp3_file)[0]
+        mp3_path = os.path.join(game_path, mp3_file)
+        
+        if os.path.exists(mp3_path):
+            # First check if we already extracted this cover
+            existing_covers = [
+                f for f in os.listdir(game_path) 
+                if f.startswith(f"{station_name}_mp3cover") or f.startswith(f"{station_name}_cover")
+            ]
+            if existing_covers:
+                return os.path.join(game_path, existing_covers[0])
+            
+            # Extract fresh cover art
+            return extract_mp3_cover(mp3_path, station_name, game_path)
+    
+    return None
+
 def get_image_path(game_index, display_index, force_refresh=False):
     """Get the path to the appropriate image based on game and station with caching"""
     games = get_available_games(force_refresh)
@@ -133,6 +239,27 @@ def get_image_path(game_index, display_index, force_refresh=False):
     
     # If no station image found, create a default one
     return create_default_station_image(station_name, game_path)
+
+def get_image_path_with_priority(game_index, display_index, force_refresh=False):
+    """
+    Get image path with priority:
+    1. Dedicated image file (PNG, JPG, etc.)
+    2. Embedded MP3 cover art
+    3. Default generated image
+    """
+    # Priority 1: Dedicated image file
+    image_path = get_image_path(game_index, display_index, force_refresh)
+    if image_path and os.path.exists(image_path):
+        return image_path
+    
+    # Priority 2: MP3 cover art (only for stations, not game logos)
+    if display_index > 0:
+        mp3_cover_path = get_mp3_cover_path(game_index, display_index)
+        if mp3_cover_path:
+            return mp3_cover_path
+    
+    # Priority 3: Default generated image (already handled in get_image_path)
+    return image_path
 
 def display_settings_image(setting_index):
     """Display settings images"""
@@ -203,14 +330,14 @@ def display_playlist_name(playlist_name):
         show_default_image()
 
 def display_image(game_index, display_index, force_refresh=False):
-    """Display image with support for settings mode"""
+    """Display image with support for settings mode and MP3 cover art fallback"""
     if game_index == -1:
         # Settings mode
         display_settings_image(display_index)
         return
     
-    # Normal game/station display
-    image_path = get_image_path(game_index, display_index, force_refresh)
+    # Normal game/station display with MP3 cover art fallback
+    image_path = get_image_path_with_priority(game_index, display_index, force_refresh)
     
     if image_path and os.path.exists(image_path):
         try:
