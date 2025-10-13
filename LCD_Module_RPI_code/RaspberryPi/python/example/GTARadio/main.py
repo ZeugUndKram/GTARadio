@@ -9,6 +9,7 @@ import select
 import termios
 import tty
 import sys
+from radio import start_playback_monitor
 
 GPIO.setmode(GPIO.BCM)
 
@@ -260,6 +261,39 @@ def handle_escape_action():
         print("Exited settings mode")
         # Note: Playback remains stopped until user selects a station
 
+def handle_space_action():
+    """Handle space bar action"""
+    result = settings_manager.handle_space()
+    
+    if result == 'enter_settings':
+        print("Entered settings mode - playback stopped")
+    elif result == 'enter_playlist_select':
+        print("Entered playlist selection")
+    elif result == 'brightness_changed':
+        print(f"Brightness changed to level {settings_manager.current_brightness_index}")
+    elif result == 'playback_mode_changed':
+        print(f"Playback mode changed to: {settings_manager.current_playback_mode}")
+    elif isinstance(result, tuple) and result[0] == 'select_playlist':
+        global game_index, station_index
+        game_index = result[1]
+        station_index = 1  # Set to first station but DON'T start playback
+        
+        # Clear cache and update display only
+        clear_cache()
+        clear_display_cache()
+        display_image(game_index, station_index)
+        
+        # Don't start playback - user needs to manually select a station
+        stations, _ = get_radio_stations()
+        if stations:
+            game_folders = sorted(stations.keys())
+            game_name = game_folders[game_index] if game_index < len(game_folders) else "Unknown"
+            print(f"Switched to playlist: {game_name} (ready - turn encoder to start playback)")
+    elif result == 'shutdown':
+        print("Shutdown command executed")
+        # The system will shut down automatically
+        # We don't need to do anything else here"
+
 def terminal_control():
     """Handle terminal input in a separate thread"""
     print_help()
@@ -360,6 +394,7 @@ if ROTARY_ENCODER_AVAILABLE:
 # Start terminal control in a separate thread
 terminal_thread = threading.Thread(target=terminal_control, daemon=True)
 terminal_thread.start()
+start_playback_monitor()
 
 print("Radio system started!")
 if ROTARY_ENCODER_AVAILABLE:
