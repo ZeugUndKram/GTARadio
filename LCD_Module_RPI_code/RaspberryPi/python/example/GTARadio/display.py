@@ -11,7 +11,7 @@ from mutagen.id3 import ID3, APIC
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from lib import LCD_1inch28
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import RPi.GPIO as GPIO
 
 GPIO.setmode(GPIO.BCM)
@@ -36,6 +36,40 @@ _station_files_cache = {}
 _image_cache = {}  # Cache for loaded images
 _last_cache_update = 0
 CACHE_TIMEOUT = 30  # seconds
+
+# Brightness levels (0-4) mapped to brightness factors
+BRIGHTNESS_FACTORS = [0.3, 0.5, 0.7, 0.85, 1.0]  # hell_0 to hell_4
+
+def get_current_brightness_factor():
+    """Get the current brightness factor from settings"""
+    try:
+        from settings import settings_manager
+        brightness_index = settings_manager.current_brightness_index
+        return BRIGHTNESS_FACTORS[brightness_index]
+    except:
+        return 1.0  # Default full brightness
+
+def apply_brightness(image, brightness_factor):
+    """Apply brightness adjustment to an image"""
+    try:
+        if brightness_factor < 1.0:
+            # Convert to RGB if needed
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Apply brightness using ImageEnhance
+            enhancer = ImageEnhance.Brightness(image)
+            image = enhancer.enhance(brightness_factor)
+            
+            # Also reduce contrast for more natural dimming
+            if brightness_factor < 0.7:
+                contrast_enhancer = ImageEnhance.Contrast(image)
+                image = contrast_enhancer.enhance(0.9)
+        
+        return image
+    except Exception as e:
+        print(f"Error applying brightness: {e}")
+        return image
 
 def get_available_games(force_refresh=False):
     """Get list of available games with caching"""
@@ -284,9 +318,14 @@ def display_settings_image(setting_index):
                 image = Image.open(image_path)
                 if image.size != (240, 240):
                     image = image.resize((240, 240), Image.Resampling.LANCZOS)
+                
+                # Apply current brightness to settings images too
+                brightness_factor = get_current_brightness_factor()
+                image = apply_brightness(image, brightness_factor)
+                
                 im_r = image.rotate(0)
                 disp.ShowImage(im_r)
-                print(f"Displayed settings image: {os.path.basename(image_path)}")
+                print(f"Displayed settings image: {os.path.basename(image_path)} (brightness: {brightness_factor})")
             except Exception as e:
                 print(f"Error displaying settings image: {e}")
                 show_default_image()
@@ -304,6 +343,8 @@ def display_shutdown_image():
             image = Image.open(shutdown_image_path)
             if image.size != (240, 240):
                 image = image.resize((240, 240), Image.Resampling.LANCZOS)
+            
+            # Don't apply brightness to shutdown image - keep it full brightness
             im_r = image.rotate(0)
             disp.ShowImage(im_r)
             print("Displayed Shutdown.png")
@@ -351,6 +392,10 @@ def display_playlist_name(playlist_name):
             draw.text((120, y_pos), line, fill='white', font=font_large, anchor="mm")
             y_pos += 30
         
+        # Apply brightness to generated image
+        brightness_factor = get_current_brightness_factor()
+        image = apply_brightness(image, brightness_factor)
+        
         im_r = image.rotate(0)
         disp.ShowImage(im_r)
     except Exception as e:
@@ -377,6 +422,11 @@ def display_image(game_index, display_index, force_refresh=False):
             # Resize image to fit display if needed
             if image.size != (240, 240):
                 image = image.resize((240, 240), Image.Resampling.LANCZOS)
+            
+            # Apply current brightness setting
+            brightness_factor = get_current_brightness_factor()
+            image = apply_brightness(image, brightness_factor)
+            
             im_r = image.rotate(0)
             
             # Cache the image
@@ -384,6 +434,7 @@ def display_image(game_index, display_index, force_refresh=False):
             _image_cache[cache_key] = im_r
             
             disp.ShowImage(im_r)
+            print(f"Displayed image with brightness: {brightness_factor}")
         except Exception as e:
             print(f"Error displaying image {image_path}: {e}")
             # If it's a game logo that failed, show playlist name instead
@@ -414,6 +465,11 @@ def show_default_image():
         except:
             font = ImageFont.load_default()
         draw.text((120, 120), "NO IMAGE", fill='white', font=font, anchor="mm")
+        
+        # Apply brightness to default image too
+        brightness_factor = get_current_brightness_factor()
+        image = apply_brightness(image, brightness_factor)
+        
         im_r = image.rotate(0)
         disp.ShowImage(im_r)
     except Exception as e:

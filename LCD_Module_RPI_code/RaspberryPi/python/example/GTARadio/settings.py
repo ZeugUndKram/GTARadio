@@ -1,7 +1,7 @@
 import os
 import sys
 import subprocess
-from display import display_image, show_default_image
+from display import display_image, show_default_image, clear_display_cache
 from radio import get_radio_stations, mp3_process
 
 ASSETS_PATH = os.path.join(os.path.dirname(__file__), 'assets')
@@ -68,104 +68,32 @@ class SettingsManager:
         except Exception as e:
             print(f"Error saving brightness level: {e}")
     
-    def set_brightness(self, brightness_index):
-        """Set the display brightness using alternative method"""
-        try:
-            # Map brightness index to actual brightness values
-            brightness_values = [50, 100, 150, 200, 255]  # hell_0 to hell_4
-            brightness_value = brightness_values[brightness_index]
-            
-            print(f"Attempting to set brightness to level {brightness_index} (value: {brightness_value})")
-            
-            # Method 1: Try Raspberry Pi backlight control
-            backlight_success = False
-            try:
-                # Try different backlight paths
-                backlight_paths = [
-                    '/sys/class/backlight/10-0045/brightness',
-                    '/sys/class/backlight/rpi_backlight/brightness',
-                    '/sys/class/backlight/backlight/brightness'
-                ]
-                
-                for backlight_path in backlight_paths:
-                    if os.path.exists(backlight_path):
-                        with open(backlight_path, 'w') as f:
-                            f.write(str(brightness_value))
-                        print(f"✓ Set brightness via backlight control: {backlight_path}")
-                        backlight_success = True
-                        break
-                
-                if not backlight_success:
-                    # Try to find any backlight device
-                    backlight_dir = '/sys/class/backlight/'
-                    if os.path.exists(backlight_dir):
-                        for device in os.listdir(backlight_dir):
-                            device_path = os.path.join(backlight_dir, device, 'brightness')
-                            if os.path.exists(device_path):
-                                with open(device_path, 'w') as f:
-                                    f.write(str(brightness_value))
-                                print(f"✓ Set brightness via {device_path}")
-                                backlight_success = True
-                                break
-            except Exception as e:
-                print(f"✗ Backlight control failed: {e}")
-            
-            # Method 2: Try GPIO PWM
-            pwm_success = False
-            if not backlight_success:
-                try:
-                    import RPi.GPIO as GPIO
-                    BL = 18  # Backlight pin
-                    
-                    GPIO.setup(BL, GPIO.OUT)
-                    pwm = GPIO.PWM(BL, 1000)  # 1kHz frequency
-                    pwm.start(brightness_value)
-                    print(f"✓ Set brightness via GPIO PWM: {brightness_value}")
-                    pwm_success = True
-                except Exception as e:
-                    print(f"✗ GPIO PWM brightness control failed: {e}")
-            
-            # Method 3: Try display command
-            if not backlight_success and not pwm_success:
-                try:
-                    # Try using vcgencmd for display control
-                    result = subprocess.run(['vcgencmd', 'display_power', '1'], capture_output=True, text=True)
-                    if result.returncode == 0:
-                        print("✓ Used vcgencmd for display control")
-                    else:
-                        print("✗ vcgencmd display control failed")
-                except Exception as e:
-                    print(f"✗ Display command failed: {e}")
-            
-            # Save the brightness level regardless of hardware success
-            self.current_brightness_index = brightness_index
-            self.save_brightness_level()
-            
-            # Update the settings list with new brightness image
-            self.update_brightness_setting()
-            
-            # Force refresh the display if we're currently viewing brightness
-            if (self.in_settings and not self.in_playlist_select and 
-                self.current_setting_index == 1):  # brightness is at index 1
-                self.show_current_setting()
-            
-            return True
-        except Exception as e:
-            print(f"Error setting brightness: {e}")
-            return False
+    def next_brightness(self):
+        """Cycle to next brightness level"""
+        new_brightness_index = (self.current_brightness_index + 1) % 5  # 0-4
+        print(f"Cycling brightness from {self.current_brightness_index} to {new_brightness_index}")
+        
+        # Update brightness level
+        self.current_brightness_index = new_brightness_index
+        self.save_brightness_level()
+        
+        # Update the settings list with new brightness image
+        self.update_brightness_setting()
+        
+        # Clear display cache to force redraw of all images with new brightness
+        clear_display_cache()
+        
+        # Refresh current display
+        if self.in_settings and not self.in_playlist_select:
+            self.show_current_setting()
+        
+        return True
     
     def update_brightness_setting(self):
         """Update the brightness setting with current level image"""
         print(f"Updating brightness setting to hell_{self.current_brightness_index}.png")
         if len(self.settings_list) > 1:  # Ensure brightness setting exists
             self.settings_list[1]['image'] = f"hell_{self.current_brightness_index}.png"
-    
-    def next_brightness(self):
-        """Cycle to next brightness level"""
-        new_brightness_index = (self.current_brightness_index + 1) % 5  # 0-4
-        print(f"Cycling brightness from {self.current_brightness_index} to {new_brightness_index}")
-        success = self.set_brightness(new_brightness_index)
-        return success
     
     def stop_playback(self):
         """Stop any ongoing playback"""
@@ -206,12 +134,9 @@ class SettingsManager:
         try:
             shutdown_image_path = os.path.join(ASSETS_PATH, 'Shutdown.png')
             if os.path.exists(shutdown_image_path):
-                # Use the display_image function with special parameters for shutdown
-                # We'll use game_index=-2 to indicate shutdown screen
                 display_image(-2, 0)
                 print("Displayed Shutdown.png")
             else:
-                # Fallback to text message if Shutdown.png doesn't exist
                 self.show_shutdown_message()
         except Exception as e:
             print(f"Error displaying shutdown image: {e}")
@@ -220,31 +145,7 @@ class SettingsManager:
     def show_shutdown_message(self):
         """Display shutdown message as fallback"""
         try:
-            from display import show_default_image
-            import os
-            import sys
-            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-            from lib import LCD_1inch28
-            from PIL import Image, ImageDraw, ImageFont
-            
-            disp = LCD_1inch28.LCD_1inch28()
-            disp.Init()
-            
-            image = Image.new('RGB', (240, 240), color='red')
-            draw = ImageDraw.Draw(image)
-            
-            try:
-                font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
-                font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-            except:
-                font_large = ImageFont.load_default()
-                font_small = ImageFont.load_default()
-            
-            draw.text((120, 100), "SHUTTING DOWN", fill='white', font=font_large, anchor="mm")
-            draw.text((120, 130), "Goodbye!", fill='white', font=font_small, anchor="mm")
-            
-            im_r = image.rotate(0)
-            disp.ShowImage(im_r)
+            show_default_image()
         except Exception as e:
             print(f"Error showing shutdown message: {e}")
     
@@ -252,17 +153,10 @@ class SettingsManager:
         """Execute system shutdown"""
         print("Shutting down system...")
         try:
-            # Stop playback first
             self.stop_playback()
-            
-            # Display Shutdown.png image
             self.show_shutdown_image()
-            
-            # Wait a moment for the image to be seen
             import time
             time.sleep(3)
-            
-            # Execute shutdown command
             subprocess.run(['sudo', 'shutdown', '-h', 'now'])
             return 'shutdown'
         except Exception as e:
@@ -301,15 +195,8 @@ class SettingsManager:
         """Display current setting image"""
         if self.settings_list and not self.in_playlist_select:
             setting = self.settings_list[self.current_setting_index]
-            image_path = os.path.join(ASSETS_PATH, setting['image'])
-            print(f"Attempting to display setting: {setting['name']} with image: {setting['image']}")
-            if os.path.exists(image_path):
-                # Use special display mode for settings
-                display_image(-1, self.current_setting_index)
-                print(f"Setting: {setting['name']} (level: {self.current_brightness_index})")
-            else:
-                print(f"Image not found: {image_path}")
-                show_default_image()
+            display_image(-1, self.current_setting_index)
+            print(f"Setting: {setting['name']} (level: {self.current_brightness_index})")
     
     def show_current_playlist(self):
         """Display current playlist cover or name"""
@@ -318,9 +205,7 @@ class SettingsManager:
             game_folders = sorted(stations.keys())
             if self.current_playlist_index < len(game_folders):
                 game_name = game_folders[self.current_playlist_index]
-                
-                # Try to display the game logo, fall back to name display
-                display_image(self.current_playlist_index, 0)  # 0 = game logo
+                display_image(self.current_playlist_index, 0)
                 print(f"Select playlist: {game_name}")
     
     def select_current_playlist(self):
@@ -340,30 +225,24 @@ class SettingsManager:
     def handle_space(self):
         """Handle space bar press in different modes"""
         if not self.in_settings:
-            # Enter settings mode (stops playback)
             self.enter_settings()
             return 'enter_settings'
         
         elif self.in_settings and not self.in_playlist_select:
-            # Check which setting is selected
             current_setting = self.settings_list[self.current_setting_index]
             
             if current_setting['name'] == 'playlist':
-                # Enter submenu (playlist selection)
                 if self.enter_playlist_select():
                     return 'enter_playlist_select'
             
             elif current_setting['name'] == 'brightness':
-                # Cycle brightness level
                 if self.next_brightness():
                     return 'brightness_changed'
             
             elif current_setting['name'] == 'shutdown':
-                # Execute shutdown
                 return self.execute_shutdown()
         
         elif self.in_playlist_select:
-            # Select current playlist and exit (without starting playback)
             selected_game = self.select_current_playlist()
             if selected_game is not None:
                 return ('select_playlist', selected_game)
@@ -373,12 +252,10 @@ class SettingsManager:
     def handle_escape(self):
         """Handle escape/back navigation"""
         if self.in_playlist_select:
-            # Back to settings menu
             self.in_playlist_select = False
             self.show_current_setting()
             return 'back_to_settings'
         elif self.in_settings:
-            # Exit settings completely
             self.exit_settings()
             return 'exit_settings'
         return None
