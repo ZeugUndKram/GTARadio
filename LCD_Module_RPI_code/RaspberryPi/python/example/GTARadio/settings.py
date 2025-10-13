@@ -13,22 +13,19 @@ class SettingsManager:
         self.current_setting_index = 0
         self.current_playlist_index = 0
         self.current_brightness_index = 0  # 0-4 for hell_0 to hell_4
-        self.current_playback_mode = 'radio'  # 'radio' or 'song'
         self.settings_list = []
         self.load_brightness_level()
-        self.load_playback_mode()
-        self.load_settings()  # Load settings AFTER loading preferences
+        self.load_settings()  # Load settings AFTER brightness level
     
     def load_settings(self):
         """Load available settings from assets folder"""
         if not os.path.exists(ASSETS_PATH):
             os.makedirs(ASSETS_PATH, exist_ok=True)
         
-        # Define expected settings images - brightness and mode images will be dynamic
+        # Define expected settings images - brightness image will be dynamic
         self.settings_list = [
             {'name': 'playlist', 'image': 'playlist.png', 'type': 'menu'},
             {'name': 'brightness', 'image': f'hell_{self.current_brightness_index}.png', 'type': 'action'},
-            {'name': 'playback_mode', 'image': f'mode_{self.current_playback_mode}.png', 'type': 'action'},
             {'name': 'shutdown', 'image': 'Aus.png', 'type': 'action'}
         ]
         
@@ -61,24 +58,6 @@ class SettingsManager:
             print(f"Error loading brightness level: {e}")
             self.current_brightness_index = 2
     
-    def load_playback_mode(self):
-        """Load the current playback mode from storage"""
-        try:
-            mode_file = os.path.join(os.path.dirname(__file__), 'playback_mode.txt')
-            if os.path.exists(mode_file):
-                with open(mode_file, 'r') as f:
-                    self.current_playback_mode = f.read().strip()
-                    if self.current_playback_mode not in ['radio', 'song']:
-                        self.current_playback_mode = 'radio'  # Default to radio mode
-                    print(f"Loaded playback mode: {self.current_playback_mode}")
-            else:
-                self.current_playback_mode = 'radio'  # Default to radio mode
-                self.save_playback_mode()
-                print(f"Created default playback mode: {self.current_playback_mode}")
-        except Exception as e:
-            print(f"Error loading playback mode: {e}")
-            self.current_playback_mode = 'radio'
-    
     def save_brightness_level(self):
         """Save the current brightness level to storage"""
         try:
@@ -88,16 +67,6 @@ class SettingsManager:
             print(f"Saved brightness level: {self.current_brightness_index}")
         except Exception as e:
             print(f"Error saving brightness level: {e}")
-    
-    def save_playback_mode(self):
-        """Save the current playback mode to storage"""
-        try:
-            mode_file = os.path.join(os.path.dirname(__file__), 'playback_mode.txt')
-            with open(mode_file, 'w') as f:
-                f.write(self.current_playback_mode)
-            print(f"Saved playback mode: {self.current_playback_mode}")
-        except Exception as e:
-            print(f"Error saving playback mode: {e}")
     
     def next_brightness(self):
         """Cycle to next brightness level"""
@@ -120,35 +89,11 @@ class SettingsManager:
         
         return True
     
-    def toggle_playback_mode(self):
-        """Toggle between radio and song playback modes"""
-        new_mode = 'song' if self.current_playback_mode == 'radio' else 'radio'
-        print(f"Toggling playback mode from {self.current_playback_mode} to {new_mode}")
-        
-        # Update playback mode
-        self.current_playback_mode = new_mode
-        self.save_playback_mode()
-        
-        # Update the settings list with new mode image
-        self.update_playback_mode_setting()
-        
-        # Refresh current display
-        if self.in_settings and not self.in_playlist_select:
-            self.show_current_setting()
-        
-        return True
-    
     def update_brightness_setting(self):
         """Update the brightness setting with current level image"""
         print(f"Updating brightness setting to hell_{self.current_brightness_index}.png")
         if len(self.settings_list) > 1:  # Ensure brightness setting exists
             self.settings_list[1]['image'] = f"hell_{self.current_brightness_index}.png"
-    
-    def update_playback_mode_setting(self):
-        """Update the playback mode setting with current mode image"""
-        print(f"Updating playback mode setting to mode_{self.current_playback_mode}.png")
-        if len(self.settings_list) > 2:  # Ensure playback mode setting exists
-            self.settings_list[2]['image'] = f"mode_{self.current_playback_mode}.png"
     
     def stop_playback(self):
         """Stop any ongoing playback"""
@@ -251,7 +196,7 @@ class SettingsManager:
         if self.settings_list and not self.in_playlist_select:
             setting = self.settings_list[self.current_setting_index]
             display_image(-1, self.current_setting_index)
-            print(f"Setting: {setting['name']} (brightness: {self.current_brightness_index}, mode: {self.current_playback_mode})")
+            print(f"Setting: {setting['name']} (level: {self.current_brightness_index})")
     
     def show_current_playlist(self):
         """Display current playlist cover or name"""
@@ -293,10 +238,6 @@ class SettingsManager:
             elif current_setting['name'] == 'brightness':
                 if self.next_brightness():
                     return 'brightness_changed'
-            
-            elif current_setting['name'] == 'playback_mode':
-                if self.toggle_playback_mode():
-                    return 'playback_mode_changed'
             
             elif current_setting['name'] == 'shutdown':
                 return self.execute_shutdown()

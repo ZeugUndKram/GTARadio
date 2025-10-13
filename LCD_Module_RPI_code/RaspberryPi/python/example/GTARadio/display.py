@@ -297,24 +297,19 @@ def get_image_path_with_priority(game_index, display_index, force_refresh=False)
 
 def display_settings_image(setting_index):
     """Display settings images"""
-    # These are just the base names - the actual images will be dynamic
+    # These are just the base names - the actual brightness image will be dynamic
     settings_base_images = [
         'playlist.png',
         'hell_0.png',  # This gets replaced with current brightness level
-        'mode_radio.png',  # This gets replaced with current playback mode
         'Aus.png'
     ]
     
     if setting_index < len(settings_base_images):
-        # For dynamic settings, we need to get the current state from settings_manager
-        from settings import settings_manager
-        
+        # For brightness setting, we need to get the current level from settings_manager
         if setting_index == 1:  # brightness setting
+            from settings import settings_manager
             current_brightness_image = f"hell_{settings_manager.current_brightness_index}.png"
             image_path = os.path.join(os.path.dirname(__file__), 'assets', current_brightness_image)
-        elif setting_index == 2:  # playback mode setting
-            current_mode_image = f"mode_{settings_manager.current_playback_mode}.png"
-            image_path = os.path.join(os.path.dirname(__file__), 'assets', current_mode_image)
         else:
             image_path = os.path.join(os.path.dirname(__file__), 'assets', settings_base_images[setting_index])
         
@@ -330,7 +325,7 @@ def display_settings_image(setting_index):
                 
                 im_r = image.rotate(0)
                 disp.ShowImage(im_r)
-                print(f"Displayed settings image: {os.path.basename(image_path)}")
+                print(f"Displayed settings image: {os.path.basename(image_path)} (brightness: {brightness_factor})")
             except Exception as e:
                 print(f"Error displaying settings image: {e}")
                 show_default_image()
