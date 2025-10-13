@@ -263,14 +263,22 @@ def get_image_path_with_priority(game_index, display_index, force_refresh=False)
 
 def display_settings_image(setting_index):
     """Display settings images"""
-    settings_images = [
+    # These are just the base names - the actual brightness image will be dynamic
+    settings_base_images = [
         'playlist.png',
-        'hell_0.png',  # This will be dynamically updated to current brightness level
+        'hell_0.png',  # This gets replaced with current brightness level
         'Aus.png'
     ]
     
-    if setting_index < len(settings_images):
-        image_path = os.path.join(os.path.dirname(__file__), 'assets', settings_images[setting_index])
+    if setting_index < len(settings_base_images):
+        # For brightness setting, we need to get the current level from settings_manager
+        if setting_index == 1:  # brightness setting
+            from settings import settings_manager
+            current_brightness_image = f"hell_{settings_manager.current_brightness_index}.png"
+            image_path = os.path.join(os.path.dirname(__file__), 'assets', current_brightness_image)
+        else:
+            image_path = os.path.join(os.path.dirname(__file__), 'assets', settings_base_images[setting_index])
+        
         if os.path.exists(image_path):
             try:
                 image = Image.open(image_path)
@@ -278,11 +286,12 @@ def display_settings_image(setting_index):
                     image = image.resize((240, 240), Image.Resampling.LANCZOS)
                 im_r = image.rotate(0)
                 disp.ShowImage(im_r)
-                print(f"Displayed settings: {settings_images[setting_index]}")
+                print(f"Displayed settings image: {os.path.basename(image_path)}")
             except Exception as e:
                 print(f"Error displaying settings image: {e}")
                 show_default_image()
         else:
+            print(f"Settings image not found: {image_path}")
             show_default_image()
     else:
         show_default_image()

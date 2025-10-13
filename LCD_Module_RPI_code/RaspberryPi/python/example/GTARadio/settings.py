@@ -14,29 +14,24 @@ class SettingsManager:
         self.current_playlist_index = 0
         self.current_brightness_index = 0  # 0-4 for hell_0 to hell_4
         self.settings_list = []
-        self.load_settings()
         self.load_brightness_level()
+        self.load_settings()  # Load settings AFTER brightness level
     
     def load_settings(self):
         """Load available settings from assets folder"""
         if not os.path.exists(ASSETS_PATH):
             os.makedirs(ASSETS_PATH, exist_ok=True)
         
-        # Define expected settings images
+        # Define expected settings images - brightness image will be dynamic
         self.settings_list = [
             {'name': 'playlist', 'image': 'playlist.png', 'type': 'menu'},
-            {'name': 'brightness', 'image': 'hell_0.png', 'type': 'action'},  # Will be updated dynamically
+            {'name': 'brightness', 'image': f'hell_{self.current_brightness_index}.png', 'type': 'action'},
             {'name': 'shutdown', 'image': 'Aus.png', 'type': 'action'}
         ]
         
-        # Check which images actually exist and update brightness image
+        # Check which images actually exist
         available_settings = []
         for setting in self.settings_list:
-            if setting['name'] == 'brightness':
-                # Use current brightness level image
-                brightness_image = f"hell_{self.current_brightness_index}.png"
-                setting['image'] = brightness_image
-            
             image_path = os.path.join(ASSETS_PATH, setting['image'])
             if os.path.exists(image_path):
                 available_settings.append(setting)
@@ -54,9 +49,11 @@ class SettingsManager:
                     self.current_brightness_index = int(f.read().strip())
                     # Ensure it's within bounds
                     self.current_brightness_index = max(0, min(4, self.current_brightness_index))
+                    print(f"Loaded brightness level: {self.current_brightness_index}")
             else:
                 self.current_brightness_index = 2  # Default medium brightness
                 self.save_brightness_level()
+                print(f"Created default brightness level: {self.current_brightness_index}")
         except Exception as e:
             print(f"Error loading brightness level: {e}")
             self.current_brightness_index = 2
@@ -67,6 +64,7 @@ class SettingsManager:
             brightness_file = os.path.join(os.path.dirname(__file__), 'brightness_level.txt')
             with open(brightness_file, 'w') as f:
                 f.write(str(self.current_brightness_index))
+            print(f"Saved brightness level: {self.current_brightness_index}")
         except Exception as e:
             print(f"Error saving brightness level: {e}")
     
@@ -77,68 +75,79 @@ class SettingsManager:
             brightness_values = [50, 100, 150, 200, 255]  # hell_0 to hell_4
             brightness_value = brightness_values[brightness_index]
             
-            # Try different methods to set brightness
+            print(f"Attempting to set brightness to level {brightness_index} (value: {brightness_value})")
             
             # Method 1: Try Raspberry Pi backlight control
+            backlight_success = False
             try:
-                backlight_path = '/sys/class/backlight/10-0045/brightness'
-                if os.path.exists(backlight_path):
-                    with open(backlight_path, 'w') as f:
-                        f.write(str(brightness_value))
-                    print(f"Set brightness via backlight control: {brightness_value}")
-                else:
-                    # Try other common backlight paths
-                    backlight_dirs = ['/sys/class/backlight/']
-                    for backlight_dir in backlight_dirs:
-                        if os.path.exists(backlight_dir):
-                            for device in os.listdir(backlight_dir):
-                                device_path = os.path.join(backlight_dir, device, 'brightness')
-                                if os.path.exists(device_path):
-                                    with open(device_path, 'w') as f:
-                                        f.write(str(brightness_value))
-                                    print(f"Set brightness via {device_path}: {brightness_value}")
-                                    break
-            except Exception as e:
-                print(f"Backlight control failed: {e}")
-            
-            # Method 2: Try using display library if available
-            try:
-                import os
-                import sys
-                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-                from lib import LCD_1inch28
+                # Try different backlight paths
+                backlight_paths = [
+                    '/sys/class/backlight/10-0045/brightness',
+                    '/sys/class/backlight/rpi_backlight/brightness',
+                    '/sys/class/backlight/backlight/brightness'
+                ]
                 
-                # Reinitialize display with new brightness if supported
-                disp = LCD_1inch28.LCD_1inch28()
-                disp.Init()
+                for backlight_path in backlight_paths:
+                    if os.path.exists(backlight_path):
+                        with open(backlight_path, 'w') as f:
+                            f.write(str(brightness_value))
+                        print(f"✓ Set brightness via backlight control: {backlight_path}")
+                        backlight_success = True
+                        break
                 
-                # If the display library has a brightness method, use it
-                if hasattr(disp, 'set_brightness'):
-                    disp.set_brightness(brightness_value)
-                    print(f"Set brightness via display library: {brightness_value}")
+                if not backlight_success:
+                    # Try to find any backlight device
+                    backlight_dir = '/sys/class/backlight/'
+                    if os.path.exists(backlight_dir):
+                        for device in os.listdir(backlight_dir):
+                            device_path = os.path.join(backlight_dir, device, 'brightness')
+                            if os.path.exists(device_path):
+                                with open(device_path, 'w') as f:
+                                    f.write(str(brightness_value))
+                                print(f"✓ Set brightness via {device_path}")
+                                backlight_success = True
+                                break
             except Exception as e:
-                print(f"Display library brightness control failed: {e}")
+                print(f"✗ Backlight control failed: {e}")
             
-            # Method 3: Try GPIO PWM as last resort
-            try:
-                import RPi.GPIO as GPIO
-                BL = 18  # Backlight pin
-                
-                GPIO.setup(BL, GPIO.OUT)
-                pwm = GPIO.PWM(BL, 1000)  # 1kHz frequency
-                pwm.start(brightness_value)
-                print(f"Set brightness via GPIO PWM: {brightness_value}")
-            except Exception as e:
-                print(f"GPIO PWM brightness control failed: {e}")
+            # Method 2: Try GPIO PWM
+            pwm_success = False
+            if not backlight_success:
+                try:
+                    import RPi.GPIO as GPIO
+                    BL = 18  # Backlight pin
+                    
+                    GPIO.setup(BL, GPIO.OUT)
+                    pwm = GPIO.PWM(BL, 1000)  # 1kHz frequency
+                    pwm.start(brightness_value)
+                    print(f"✓ Set brightness via GPIO PWM: {brightness_value}")
+                    pwm_success = True
+                except Exception as e:
+                    print(f"✗ GPIO PWM brightness control failed: {e}")
             
-            print(f"Set brightness to level {brightness_index} (value: {brightness_value})")
+            # Method 3: Try display command
+            if not backlight_success and not pwm_success:
+                try:
+                    # Try using vcgencmd for display control
+                    result = subprocess.run(['vcgencmd', 'display_power', '1'], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        print("✓ Used vcgencmd for display control")
+                    else:
+                        print("✗ vcgencmd display control failed")
+                except Exception as e:
+                    print(f"✗ Display command failed: {e}")
             
-            # Save the brightness level
+            # Save the brightness level regardless of hardware success
             self.current_brightness_index = brightness_index
             self.save_brightness_level()
             
             # Update the settings list with new brightness image
             self.update_brightness_setting()
+            
+            # Force refresh the display if we're currently viewing brightness
+            if (self.in_settings and not self.in_playlist_select and 
+                self.current_setting_index == 1):  # brightness is at index 1
+                self.show_current_setting()
             
             return True
         except Exception as e:
@@ -147,22 +156,16 @@ class SettingsManager:
     
     def update_brightness_setting(self):
         """Update the brightness setting with current level image"""
-        for setting in self.settings_list:
-            if setting['name'] == 'brightness':
-                setting['image'] = f"hell_{self.current_brightness_index}.png"
-                break
+        print(f"Updating brightness setting to hell_{self.current_brightness_index}.png")
+        if len(self.settings_list) > 1:  # Ensure brightness setting exists
+            self.settings_list[1]['image'] = f"hell_{self.current_brightness_index}.png"
     
     def next_brightness(self):
         """Cycle to next brightness level"""
         new_brightness_index = (self.current_brightness_index + 1) % 5  # 0-4
+        print(f"Cycling brightness from {self.current_brightness_index} to {new_brightness_index}")
         success = self.set_brightness(new_brightness_index)
-        if success:
-            # Update the display if we're currently viewing brightness
-            if (self.in_settings and not self.in_playlist_select and 
-                self.settings_list[self.current_setting_index]['name'] == 'brightness'):
-                self.show_current_setting()
-            return True
-        return False
+        return success
     
     def stop_playback(self):
         """Stop any ongoing playback"""
@@ -299,10 +302,14 @@ class SettingsManager:
         if self.settings_list and not self.in_playlist_select:
             setting = self.settings_list[self.current_setting_index]
             image_path = os.path.join(ASSETS_PATH, setting['image'])
+            print(f"Attempting to display setting: {setting['name']} with image: {setting['image']}")
             if os.path.exists(image_path):
                 # Use special display mode for settings
                 display_image(-1, self.current_setting_index)
                 print(f"Setting: {setting['name']} (level: {self.current_brightness_index})")
+            else:
+                print(f"Image not found: {image_path}")
+                show_default_image()
     
     def show_current_playlist(self):
         """Display current playlist cover or name"""
