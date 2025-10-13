@@ -71,19 +71,65 @@ class SettingsManager:
             print(f"Error saving brightness level: {e}")
     
     def set_brightness(self, brightness_index):
-        """Set the display brightness"""
+        """Set the display brightness using alternative method"""
         try:
-            # Map brightness index to actual brightness values (0-255)
+            # Map brightness index to actual brightness values
             brightness_values = [50, 100, 150, 200, 255]  # hell_0 to hell_4
             brightness_value = brightness_values[brightness_index]
             
-            # Set brightness using PWM (assuming BL pin controls backlight)
-            import RPi.GPIO as GPIO
-            BL = 18  # Backlight pin
+            # Try different methods to set brightness
             
-            GPIO.setup(BL, GPIO.OUT)
-            pwm = GPIO.PWM(BL, 1000)  # 1kHz frequency
-            pwm.start(brightness_value)
+            # Method 1: Try Raspberry Pi backlight control
+            try:
+                backlight_path = '/sys/class/backlight/10-0045/brightness'
+                if os.path.exists(backlight_path):
+                    with open(backlight_path, 'w') as f:
+                        f.write(str(brightness_value))
+                    print(f"Set brightness via backlight control: {brightness_value}")
+                else:
+                    # Try other common backlight paths
+                    backlight_dirs = ['/sys/class/backlight/']
+                    for backlight_dir in backlight_dirs:
+                        if os.path.exists(backlight_dir):
+                            for device in os.listdir(backlight_dir):
+                                device_path = os.path.join(backlight_dir, device, 'brightness')
+                                if os.path.exists(device_path):
+                                    with open(device_path, 'w') as f:
+                                        f.write(str(brightness_value))
+                                    print(f"Set brightness via {device_path}: {brightness_value}")
+                                    break
+            except Exception as e:
+                print(f"Backlight control failed: {e}")
+            
+            # Method 2: Try using display library if available
+            try:
+                import os
+                import sys
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+                from lib import LCD_1inch28
+                
+                # Reinitialize display with new brightness if supported
+                disp = LCD_1inch28.LCD_1inch28()
+                disp.Init()
+                
+                # If the display library has a brightness method, use it
+                if hasattr(disp, 'set_brightness'):
+                    disp.set_brightness(brightness_value)
+                    print(f"Set brightness via display library: {brightness_value}")
+            except Exception as e:
+                print(f"Display library brightness control failed: {e}")
+            
+            # Method 3: Try GPIO PWM as last resort
+            try:
+                import RPi.GPIO as GPIO
+                BL = 18  # Backlight pin
+                
+                GPIO.setup(BL, GPIO.OUT)
+                pwm = GPIO.PWM(BL, 1000)  # 1kHz frequency
+                pwm.start(brightness_value)
+                print(f"Set brightness via GPIO PWM: {brightness_value}")
+            except Exception as e:
+                print(f"GPIO PWM brightness control failed: {e}")
             
             print(f"Set brightness to level {brightness_index} (value: {brightness_value})")
             
@@ -109,7 +155,7 @@ class SettingsManager:
     def next_brightness(self):
         """Cycle to next brightness level"""
         new_brightness_index = (self.current_brightness_index + 1) % 5  # 0-4
-        success = self.set_brightness_alternative(new_brightness_index)
+        success = self.set_brightness(new_brightness_index)
         if success:
             # Update the display if we're currently viewing brightness
             if (self.in_settings and not self.in_playlist_select and 
@@ -329,47 +375,6 @@ class SettingsManager:
             self.exit_settings()
             return 'exit_settings'
         return None
-
-def set_brightness_alternative(self, brightness_index):
-    """Alternative method to set display brightness"""
-    try:
-        # Map brightness index to actual brightness values
-        brightness_values = [50, 100, 150, 200, 255]  # hell_0 to hell_4
-        brightness_value = brightness_values[brightness_index]
-        
-        # Try to set brightness through the display library
-        import os
-        import sys
-        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-        from lib import LCD_1inch28
-        
-        disp = LCD_1inch28.LCD_1inch28()
-        disp.Init()
-        
-        # If the display library has a brightness method, use it
-        if hasattr(disp, 'set_brightness'):
-            disp.set_brightness(brightness_value)
-        else:
-            # Fallback: Try to write to backlight control
-            try:
-                with open('/sys/class/backlight/10-0045/brightness', 'w') as f:
-                    f.write(str(brightness_value))
-            except:
-                print("Warning: Could not set hardware brightness")
-        
-        print(f"Set brightness to level {brightness_index} (value: {brightness_value})")
-        
-        # Save the brightness level
-        self.current_brightness_index = brightness_index
-        self.save_brightness_level()
-        
-        # Update the settings list with new brightness image
-        self.update_brightness_setting()
-        
-        return True
-    except Exception as e:
-        print(f"Error setting brightness: {e}")
-        return False
 
 # Global settings manager instance
 settings_manager = SettingsManager()
