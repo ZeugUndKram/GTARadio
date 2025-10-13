@@ -264,7 +264,8 @@ def get_image_path_with_priority(game_index, display_index, force_refresh=False)
 def display_settings_image(setting_index):
     """Display settings images"""
     settings_images = [
-        'playlist.png'
+        'playlist.png',
+        'Aus.png'
     ]
     
     if setting_index < len(settings_images):

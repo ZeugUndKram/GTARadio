@@ -1,5 +1,6 @@
 import os
 import sys
+import subprocess
 from display import display_image, show_default_image
 from radio import get_radio_stations, mp3_process
 
@@ -21,7 +22,8 @@ class SettingsManager:
         
         # Define expected settings images
         self.settings_list = [
-            {'name': 'playlist', 'image': 'playlist.png', 'type': 'menu'}
+            {'name': 'playlist', 'image': 'playlist.png', 'type': 'menu'},
+            {'name': 'shutdown', 'image': 'Aus.png', 'type': 'action'}
         ]
         
         # Check which images actually exist
@@ -68,6 +70,59 @@ class SettingsManager:
             print("Entered playlist selection")
             return True
         return False
+    
+    def execute_shutdown(self):
+        """Execute system shutdown"""
+        print("Shutting down system...")
+        try:
+            # Stop playback first
+            self.stop_playback()
+            
+            # Display shutdown message
+            self.show_shutdown_message()
+            
+            # Wait a moment for the message to be seen
+            import time
+            time.sleep(2)
+            
+            # Execute shutdown command
+            subprocess.run(['sudo', 'shutdown', '-h', 'now'])
+            return 'shutdown'
+        except Exception as e:
+            print(f"Error during shutdown: {e}")
+            return None
+    
+    def show_shutdown_message(self):
+        """Display shutdown message"""
+        try:
+            from display import show_default_image
+            # Create a shutdown message screen
+            import os
+            import sys
+            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+            from lib import LCD_1inch28
+            from PIL import Image, ImageDraw, ImageFont
+            
+            disp = LCD_1inch28.LCD_1inch28()
+            disp.Init()
+            
+            image = Image.new('RGB', (240, 240), color='red')
+            draw = ImageDraw.Draw(image)
+            
+            try:
+                font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+                font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+            except:
+                font_large = ImageFont.load_default()
+                font_small = ImageFont.load_default()
+            
+            draw.text((120, 100), "SHUTTING DOWN", fill='white', font=font_large, anchor="mm")
+            draw.text((120, 130), "Goodbye!", fill='white', font=font_small, anchor="mm")
+            
+            im_r = image.rotate(0)
+            disp.ShowImage(im_r)
+        except Exception as e:
+            print(f"Error showing shutdown message: {e}")
     
     def next_setting(self):
         """Move to next setting"""
@@ -141,9 +196,17 @@ class SettingsManager:
             return 'enter_settings'
         
         elif self.in_settings and not self.in_playlist_select:
-            # Enter submenu (playlist selection)
-            if self.enter_playlist_select():
-                return 'enter_playlist_select'
+            # Check which setting is selected
+            current_setting = self.settings_list[self.current_setting_index]
+            
+            if current_setting['name'] == 'playlist':
+                # Enter submenu (playlist selection)
+                if self.enter_playlist_select():
+                    return 'enter_playlist_select'
+            
+            elif current_setting['name'] == 'shutdown':
+                # Execute shutdown
+                return self.execute_shutdown()
         
         elif self.in_playlist_select:
             # Select current playlist and exit (without starting playback)
