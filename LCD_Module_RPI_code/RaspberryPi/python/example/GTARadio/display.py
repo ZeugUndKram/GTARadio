@@ -265,6 +265,7 @@ def display_settings_image(setting_index):
     """Display settings images"""
     settings_images = [
         'playlist.png',
+        'hell_0.png',  # This will be dynamically updated to current brightness level
         'Aus.png'
     ]
     

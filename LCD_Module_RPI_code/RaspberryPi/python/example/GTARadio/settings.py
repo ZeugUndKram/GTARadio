@@ -12,8 +12,10 @@ class SettingsManager:
         self.in_playlist_select = False
         self.current_setting_index = 0
         self.current_playlist_index = 0
+        self.current_brightness_index = 0  # 0-4 for hell_0 to hell_4
         self.settings_list = []
         self.load_settings()
+        self.load_brightness_level()
     
     def load_settings(self):
         """Load available settings from assets folder"""
@@ -23,12 +25,18 @@ class SettingsManager:
         # Define expected settings images
         self.settings_list = [
             {'name': 'playlist', 'image': 'playlist.png', 'type': 'menu'},
+            {'name': 'brightness', 'image': 'hell_0.png', 'type': 'action'},  # Will be updated dynamically
             {'name': 'shutdown', 'image': 'Aus.png', 'type': 'action'}
         ]
         
-        # Check which images actually exist
+        # Check which images actually exist and update brightness image
         available_settings = []
         for setting in self.settings_list:
+            if setting['name'] == 'brightness':
+                # Use current brightness level image
+                brightness_image = f"hell_{self.current_brightness_index}.png"
+                setting['image'] = brightness_image
+            
             image_path = os.path.join(ASSETS_PATH, setting['image'])
             if os.path.exists(image_path):
                 available_settings.append(setting)
@@ -36,6 +44,79 @@ class SettingsManager:
                 print(f"Warning: Settings image not found: {image_path}")
         
         self.settings_list = available_settings
+    
+    def load_brightness_level(self):
+        """Load the current brightness level from storage"""
+        try:
+            brightness_file = os.path.join(os.path.dirname(__file__), 'brightness_level.txt')
+            if os.path.exists(brightness_file):
+                with open(brightness_file, 'r') as f:
+                    self.current_brightness_index = int(f.read().strip())
+                    # Ensure it's within bounds
+                    self.current_brightness_index = max(0, min(4, self.current_brightness_index))
+            else:
+                self.current_brightness_index = 2  # Default medium brightness
+                self.save_brightness_level()
+        except Exception as e:
+            print(f"Error loading brightness level: {e}")
+            self.current_brightness_index = 2
+    
+    def save_brightness_level(self):
+        """Save the current brightness level to storage"""
+        try:
+            brightness_file = os.path.join(os.path.dirname(__file__), 'brightness_level.txt')
+            with open(brightness_file, 'w') as f:
+                f.write(str(self.current_brightness_index))
+        except Exception as e:
+            print(f"Error saving brightness level: {e}")
+    
+    def set_brightness(self, brightness_index):
+        """Set the display brightness"""
+        try:
+            # Map brightness index to actual brightness values (0-255)
+            brightness_values = [50, 100, 150, 200, 255]  # hell_0 to hell_4
+            brightness_value = brightness_values[brightness_index]
+            
+            # Set brightness using PWM (assuming BL pin controls backlight)
+            import RPi.GPIO as GPIO
+            BL = 18  # Backlight pin
+            
+            GPIO.setup(BL, GPIO.OUT)
+            pwm = GPIO.PWM(BL, 1000)  # 1kHz frequency
+            pwm.start(brightness_value)
+            
+            print(f"Set brightness to level {brightness_index} (value: {brightness_value})")
+            
+            # Save the brightness level
+            self.current_brightness_index = brightness_index
+            self.save_brightness_level()
+            
+            # Update the settings list with new brightness image
+            self.update_brightness_setting()
+            
+            return True
+        except Exception as e:
+            print(f"Error setting brightness: {e}")
+            return False
+    
+    def update_brightness_setting(self):
+        """Update the brightness setting with current level image"""
+        for setting in self.settings_list:
+            if setting['name'] == 'brightness':
+                setting['image'] = f"hell_{self.current_brightness_index}.png"
+                break
+    
+    def next_brightness(self):
+        """Cycle to next brightness level"""
+        new_brightness_index = (self.current_brightness_index + 1) % 5  # 0-4
+        success = self.set_brightness(new_brightness_index)
+        if success:
+            # Update the display if we're currently viewing brightness
+            if (self.in_settings and not self.in_playlist_select and 
+                self.settings_list[self.current_setting_index]['name'] == 'brightness'):
+                self.show_current_setting()
+            return True
+        return False
     
     def stop_playback(self):
         """Stop any ongoing playback"""
@@ -175,7 +256,7 @@ class SettingsManager:
             if os.path.exists(image_path):
                 # Use special display mode for settings
                 display_image(-1, self.current_setting_index)
-                print(f"Setting: {setting['name']}")
+                print(f"Setting: {setting['name']} (level: {self.current_brightness_index})")
     
     def show_current_playlist(self):
         """Display current playlist cover or name"""
@@ -218,6 +299,11 @@ class SettingsManager:
                 # Enter submenu (playlist selection)
                 if self.enter_playlist_select():
                     return 'enter_playlist_select'
+            
+            elif current_setting['name'] == 'brightness':
+                # Cycle brightness level
+                if self.next_brightness():
+                    return 'brightness_changed'
             
             elif current_setting['name'] == 'shutdown':
                 # Execute shutdown

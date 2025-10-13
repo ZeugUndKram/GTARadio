@@ -163,7 +163,7 @@ def print_help():
     print("  [←] or [A]  - Previous station/setting") 
     print("  [↑] or [W]  - Next game")
     print("  [↓] or [S]  - Previous game")
-    print("  [SPACE]     - Enter settings/select (replaces button press)")
+    print("  [SPACE]     - Enter settings/select/shutdown/change brightness")
     print("  [ESC]       - Back/exit settings")
     print("  [H]         - Show this help")
     print("  [R]         - Refresh file cache")
@@ -173,6 +173,8 @@ def print_help():
     print("  • Playback STOPS when entering settings")
     print("  • Select playlists without auto-starting playback")
     print("  • Turn encoder to start playback after playlist selection")
+    print("  • Press SPACE on brightness to cycle through 5 levels")
+    print("  • Press SPACE on Aus.png to shutdown the system")
     print("============================\n")
 
 def get_key():
@@ -226,6 +228,8 @@ def handle_space_action():
         print("Entered settings mode - playback stopped")
     elif result == 'enter_playlist_select':
         print("Entered playlist selection")
+    elif result == 'brightness_changed':
+        print(f"Brightness changed to level {settings_manager.current_brightness_index}")
     elif isinstance(result, tuple) and result[0] == 'select_playlist':
         global game_index, station_index
         game_index = result[1]
@@ -242,6 +246,10 @@ def handle_space_action():
             game_folders = sorted(stations.keys())
             game_name = game_folders[game_index] if game_index < len(game_folders) else "Unknown"
             print(f"Switched to playlist: {game_name} (ready - turn encoder to start playback)")
+    elif result == 'shutdown':
+        print("Shutdown command executed")
+        # The system will shut down automatically
+        # We don't need to do anything else here
 
 def handle_escape_action():
     """Handle escape/back action"""
