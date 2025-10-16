@@ -40,26 +40,21 @@ bus = 0
 device = 0
 logging.basicConfig(level=logging.DEBUG)
 
-# Only setup GPIO if rotary encoder is connected
-try:
-    PIN_CLK = 16
-    PIN_DT = 15
-    BUTTON_PIN = 14
+# GPIO pins for rotary encoder and button
+PIN_CLK = 16  # CLK pin (GPIO16)
+PIN_DT = 15   # DT pin (GPIO15)  
+BUTTON_PIN = 14  # SW pin (GPIO14)
 
-    GPIO.setup(PIN_CLK, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    GPIO.setup(PIN_DT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    
-    ROTARY_ENCODER_AVAILABLE = True
-    print("Rotary encoder initialized")
-except Exception as e:
-    print(f"Rotary encoder not available: {e}")
-    ROTARY_ENCODER_AVAILABLE = False
+# Setup GPIO
+GPIO.setup(PIN_CLK, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(PIN_DT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 # Rotary encoder variables
-if ROTARY_ENCODER_AVAILABLE:
-    PIN_CLK_LETZTER = GPIO.input(PIN_CLK)
-last_reset_time = 0
+clk_last_state = GPIO.input(PIN_CLK)
+button_last_state = GPIO.input(BUTTON_PIN)
+last_button_press_time = 0
+debounce_delay = 0.02  # 20ms debounce
 
 # Pre-cache data on startup
 print("Pre-caching file structure...")
@@ -155,58 +150,6 @@ def previous_game():
     else:
         print("No games available")
 
-def print_help():
-    """Print available commands"""
-    print("\n=== GTA Radio Controller ===")
-    print("Keyboard Controls:")
-    print("  [→] or [D]  - Next station/setting")
-    print("  [←] or [A]  - Previous station/setting") 
-    print("  [↑] or [W]  - Next game")
-    print("  [↓] or [S]  - Previous game")
-    print("  [SPACE]     - Enter settings/select/shutdown/change brightness")
-    print("  [ESC]       - Back/exit settings")
-    print("  [H]         - Show this help")
-    print("  [R]         - Refresh file cache")
-    print("  [Q]         - Quit")
-    print("  [1-9]       - Jump to station 1-9")
-    print("\nSettings Behavior:")
-    print("  • Playback STOPS when entering settings")
-    print("  • Select playlists without auto-starting playback")
-    print("  • Turn encoder to start playback after playlist selection")
-    print("  • Press SPACE on brightness to cycle through 5 levels")
-    print("  • Press SPACE on Aus.png to shutdown the system")
-    print("============================\n")
-
-def get_key():
-    """Get a single keypress including arrow keys"""
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setraw(sys.stdin.fileno())
-        
-        # Read first character
-        ch = sys.stdin.read(1)
-        
-        # If it's an escape character, check for arrow keys
-        if ch == '\x1b':
-            # Read the next two characters
-            ch2 = sys.stdin.read(1)
-            ch3 = sys.stdin.read(1)
-            
-            if ch2 == '[':
-                if ch3 == 'A':  # Up arrow
-                    return 'UP'
-                elif ch3 == 'B':  # Down arrow
-                    return 'DOWN'
-                elif ch3 == 'C':  # Right arrow
-                    return 'RIGHT'
-                elif ch3 == 'D':  # Left arrow
-                    return 'LEFT'
-        
-        return ch
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-
 def handle_settings_navigation(direction):
     """Handle navigation while in settings mode"""
     if settings_manager.in_playlist_select:
@@ -221,7 +164,7 @@ def handle_settings_navigation(direction):
             settings_manager.previous_setting()
 
 def handle_space_action():
-    """Handle space bar action"""
+    """Handle space bar action (same as button press)"""
     result = settings_manager.handle_space()
     
     if result == 'enter_settings':
@@ -248,8 +191,6 @@ def handle_space_action():
             print(f"Switched to playlist: {game_name} (ready - turn encoder to start playback)")
     elif result == 'shutdown':
         print("Shutdown command executed")
-        # The system will shut down automatically
-        # We don't need to do anything else here
 
 def handle_escape_action():
     """Handle escape/back action"""
@@ -258,7 +199,69 @@ def handle_escape_action():
         print("Back to settings menu")
     elif result == 'exit_settings':
         print("Exited settings mode")
-        # Note: Playback remains stopped until user selects a station
+
+def print_help():
+    """Print available commands"""
+    print("\n=== GTA Radio Controller ===")
+    print("Controls:")
+    print("  Rotary Encoder:")
+    print("    - Turn LEFT: Previous station/setting")
+    print("    - Turn RIGHT: Next station/setting") 
+    print("    - Press BUTTON: Enter settings/select")
+    print("    - Double-click BUTTON: Switch games")
+    print("  Keyboard:")
+    print("    [→] or [D]  - Next station/setting")
+    print("    [←] or [A]  - Previous station/setting") 
+    print("    [↑] or [W]  - Next game")
+    print("    [↓] or [S]  - Previous game")
+    print("    [SPACE]     - Enter settings/select")
+    print("    [ESC]       - Back/exit settings")
+    print("    [H]         - Show this help")
+    print("    [R]         - Refresh file cache")
+    print("    [Q]         - Quit")
+    print("    [1-9]       - Jump to station 1-9")
+    print("\nSettings Behavior:")
+    print("  • Playback STOPS when entering settings")
+    print("  • Select playlists without auto-starting playback")
+    print("  • Turn encoder to start playback after playlist selection")
+    print("  • Press button on brightness to cycle through 5 levels")
+    print("  • Press button on Aus.png to shutdown the system")
+    print("============================\n")
+
+def get_key():
+    """Get a single keypress including arrow keys"""
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(sys.stdin.fileno())
+        
+        # Check if there's input available
+        if select.select([sys.stdin], [], [], 0.1)[0]:
+            # Read first character
+            ch = sys.stdin.read(1)
+            
+            # If it's an escape character, check for arrow keys
+            if ch == '\x1b':
+                # Check if there are more characters available
+                if select.select([sys.stdin], [], [], 0.1)[0]:
+                    ch2 = sys.stdin.read(1)
+                    if select.select([sys.stdin], [], [], 0.1)[0]:
+                        ch3 = sys.stdin.read(1)
+                        
+                        if ch2 == '[':
+                            if ch3 == 'A':  # Up arrow
+                                return 'UP'
+                            elif ch3 == 'B':  # Down arrow
+                                return 'DOWN'
+                            elif ch3 == 'C':  # Right arrow
+                                return 'RIGHT'
+                            elif ch3 == 'D':  # Left arrow
+                                return 'LEFT'
+            
+            return ch
+        return None
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 def terminal_control():
     """Handle terminal input in a separate thread"""
@@ -268,6 +271,10 @@ def terminal_control():
         try:
             key = get_key()
             
+            if key is None:
+                time.sleep(0.01)
+                continue
+                
             if key in ['q', 'Q']:
                 print("\nShutting down...")
                 os._exit(0)
@@ -296,7 +303,7 @@ def terminal_control():
                     print("Previous game")
                     previous_game()
                 
-            elif key == ' ':  # SPACE - rotary encoder press
+            elif key == ' ':  # SPACE - button press
                 handle_space_action()
                 
             elif key in ['\x1b', '\x03']:  # ESC or Ctrl+C - back/exit
@@ -326,48 +333,82 @@ def terminal_control():
         except Exception as e:
             print(f"Error in terminal control: {e}")
 
-# Rotary encoder functions (only if available)
-if ROTARY_ENCODER_AVAILABLE:
-    def ausgabeFunktion(null):
-        global PIN_CLK_LETZTER
-        
-        PIN_CLK_AKTUELL = GPIO.input(PIN_CLK)
-
-        if PIN_CLK_AKTUELL != PIN_CLK_LETZTER:
+def read_rotary_encoder():
+    """Read rotary encoder state and handle rotation"""
+    global clk_last_state
+    
+    clk_state = GPIO.input(PIN_CLK)
+    dt_state = GPIO.input(PIN_DT)
+    
+    # Check for rotation
+    if clk_state != clk_last_state:
+        # CLK pin changed state, so rotation occurred
+        if dt_state != clk_state:
+            # Turning clockwise (right)
             if settings_manager.in_settings:
-                # In settings mode - navigate settings
-                if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
-                    handle_settings_navigation('next')
-                else:
-                    handle_settings_navigation('previous')
+                handle_settings_navigation('next')
             else:
-                # Normal mode - navigate stations
-                if GPIO.input(PIN_DT) != PIN_CLK_AKTUELL:
-                    next_station()
-                else:
-                    previous_station()
-            
-        PIN_CLK_LETZTER = PIN_CLK_AKTUELL
+                next_station()
+        else:
+            # Turning counter-clockwise (left)
+            if settings_manager.in_settings:
+                handle_settings_navigation('previous')
+            else:
+                previous_station()
+        
+        clk_last_state = clk_state
+        time.sleep(debounce_delay)  # Debounce
 
-    def CounterReset(null):
-        # Now space bar handles this in terminal_control
-        pass
+def read_button():
+    """Read button state and handle presses"""
+    global button_last_state, last_button_press_time
+    
+    button_state = GPIO.input(BUTTON_PIN)
+    current_time = time.time()
+    
+    # Check for button press (active low - button pressed when LOW)
+    if button_state == GPIO.LOW and button_last_state == GPIO.HIGH:
+        # Button just pressed
+        if current_time - last_button_press_time < 0.5:  # Double click within 500ms
+            # Double click - switch game
+            if not settings_manager.in_settings:
+                next_game()
+        else:
+            # Single click - handle as space action
+            handle_space_action()
+        
+        last_button_press_time = current_time
+        time.sleep(debounce_delay)  # Debounce
+    
+    button_last_state = button_state
 
-    # Setup interrupts
-    GPIO.add_event_detect(PIN_CLK, GPIO.BOTH, callback=ausgabeFunktion, bouncetime=200)
-    # Note: Button press is now handled by space bar in terminal
+def rotary_control():
+    """Handle rotary encoder input in a separate thread"""
+    print("Rotary encoder control started")
+    
+    while True:
+        try:
+            read_rotary_encoder()
+            read_button()
+            time.sleep(0.001)  # Small delay to prevent CPU overload
+        except Exception as e:
+            print(f"Error in rotary control: {e}")
+            time.sleep(0.1)
 
-# Start terminal control in a separate thread
+# Start control threads
+print("Starting control threads...")
 terminal_thread = threading.Thread(target=terminal_control, daemon=True)
 terminal_thread.start()
 
+rotary_thread = threading.Thread(target=rotary_control, daemon=True)
+rotary_thread.start()
+
 print("Radio system started!")
-if ROTARY_ENCODER_AVAILABLE:
-    print("Rotary encoder: ENABLED")
-    print("Rotate encoder to browse stations, double-click button to switch games")
-else:
-    print("Rotary encoder: DISABLED (using keyboard controls only)")
-print("Press 'H' for help with keyboard controls")
+print("Rotary encoder: ENABLED")
+print("  - Turn: Navigate stations/settings")
+print("  - Press: Enter settings/select")
+print("  - Double-click: Switch games")
+print("Keyboard controls also available - Press 'H' for help")
 
 # Initial playback
 if get_station_count(game_index) > 0:
@@ -375,21 +416,23 @@ if get_station_count(game_index) > 0:
 
 try:
     while True:
-        # Keep the main thread alive
-        time.sleep(1)
+        # Keep the main thread alive and print status occasionally
+        time.sleep(5)
         
-        # Optional: Print status every 30 seconds
+        # Print status every 30 seconds
         if int(time.time()) % 30 == 0:
             stations, _ = get_radio_stations()
             if stations:
                 game_folders = sorted(stations.keys())
                 current_game = game_folders[game_index] if game_index < len(game_folders) else "Unknown"
-                print(f"Status: Game '{current_game}', Station {station_index}")
+                station_count = get_station_count(game_index)
+                mode = "SETTINGS" if settings_manager.in_settings else "RADIO"
+                print(f"Status: {mode} | Game: '{current_game}' | Station: {station_index}/{station_count}")
 
 except KeyboardInterrupt:
     print("\nShutting down...")
 except Exception as e:
     print(f"Error in main loop: {e}")
 finally:
-    if ROTARY_ENCODER_AVAILABLE:
-        GPIO.cleanup()
+    GPIO.cleanup()
+    print("GPIO cleaned up")
