@@ -357,54 +357,64 @@ def read_rotary_encoder():
     if clk_state == clk_last_state and dt_state == dt_last_state:
         return
     
-    # Update state machine based on quadrature encoding
-    # Typical rotary encoder sequence:
-    # CW: 00 -> 10 -> 11 -> 01 -> 00
-    # CCW: 00 -> 01 -> 11 -> 10 -> 00
-    
-    # Combine states into a 2-bit value
+    # Combine states into a 2-bit value: [CLK, DT]
     current_state = (clk_state << 1) | dt_state
     last_state = (clk_last_state << 1) | dt_last_state
     
-    # State transition table
-    state_transitions = {
-        # From state 0 (00)
-        0: {2: 1, 1: 3},  # 00 -> 10 (CW) or 00 -> 01 (CCW)
-        # From state 1 (10) - waiting for transition
-        1: {3: 2, 0: 0},  # 10 -> 11 (CW) or 10 -> 00 (invalid)
-        # From state 2 (11) - complete CW rotation
-        2: {1: 0, 2: 2},  # 11 -> 01 (CW complete) or stay
-        # From state 3 (01) - waiting for transition  
-        3: {3: 3, 0: 4},  # 01 -> 01 (stay) or 01 -> 00 (CCW complete)
-        # From state 4 (00) - complete CCW rotation
-        4: {0: 0, 4: 4}   # Reset or stay
-    }
+    # Debug: show state changes
+    # print(f"Last: {clk_last_state}{dt_last_state} ({last_state}) -> Current: {clk_state}{dt_state} ({current_state}) | State: {encoder_state}")
     
-    # Get next state
-    if last_state in state_transitions and current_state in state_transitions[last_state]:
-        encoder_state = state_transitions[last_state][current_state]
-    else:
-        # Invalid transition, reset
-        encoder_state = 0
-    
-    # Check for completed rotations
-    if encoder_state == 2:  # CW rotation complete
-        if settings_manager.in_settings:
-            handle_settings_navigation('next')
-        else:
-            next_station()
-        print("Rotary: RIGHT (complete cycle)")
-        last_rotation_time = current_time
-        encoder_state = 0  # Reset for next rotation
-        
-    elif encoder_state == 4:  # CCW rotation complete
-        if settings_manager.in_settings:
-            handle_settings_navigation('previous')
-        else:
-            previous_station()
-        print("Rotary: LEFT (complete cycle)")
-        last_rotation_time = current_time
-        encoder_state = 0  # Reset for next rotation
+    # Simplified state machine - track transitions
+    if encoder_state == 0:
+        # Start of rotation
+        if last_state == 0b00 and current_state == 0b10:  # 00 -> 10 (CW start)
+            encoder_state = 1  # CW in progress
+        elif last_state == 0b00 and current_state == 0b01:  # 00 -> 01 (CCW start)
+            encoder_state = 2  # CCW in progress
+    elif encoder_state == 1:
+        # CW rotation in progress
+        if last_state == 0b10 and current_state == 0b11:  # 10 -> 11 (CW step 2)
+            encoder_state = 3
+        elif last_state == 0b10 and current_state == 0b00:  # 10 -> 00 (invalid, reset)
+            encoder_state = 0
+    elif encoder_state == 2:
+        # CCW rotation in progress
+        if last_state == 0b01 and current_state == 0b11:  # 01 -> 11 (CCW step 2)
+            encoder_state = 4
+        elif last_state == 0b01 and current_state == 0b00:  # 01 -> 00 (invalid, reset)
+            encoder_state = 0
+    elif encoder_state == 3:
+        # CW rotation almost complete
+        if last_state == 0b11 and current_state == 0b01:  # 11 -> 01 (CW step 3)
+            encoder_state = 5
+        elif last_state == 0b11 and current_state == 0b10:  # 11 -> 10 (invalid, reset)
+            encoder_state = 0
+    elif encoder_state == 4:
+        # CCW rotation almost complete
+        if last_state == 0b11 and current_state == 0b10:  # 11 -> 10 (CCW step 3)
+            encoder_state = 6
+        elif last_state == 0b11 and current_state == 0b01:  # 11 -> 01 (invalid, reset)
+            encoder_state = 0
+    elif encoder_state == 5:
+        # CW rotation complete
+        if last_state == 0b01 and current_state == 0b00:  # 01 -> 00 (CW complete)
+            if settings_manager.in_settings:
+                handle_settings_navigation('next')
+            else:
+                next_station()
+            print("Rotary: RIGHT (complete cycle)")
+            last_rotation_time = current_time
+        encoder_state = 0  # Reset regardless
+    elif encoder_state == 6:
+        # CCW rotation complete
+        if last_state == 0b10 and current_state == 0b00:  # 10 -> 00 (CCW complete)
+            if settings_manager.in_settings:
+                handle_settings_navigation('previous')
+            else:
+                previous_station()
+            print("Rotary: LEFT (complete cycle)")
+            last_rotation_time = current_time
+        encoder_state = 0  # Reset regardless
     
     # Update last states
     clk_last_state = clk_state
