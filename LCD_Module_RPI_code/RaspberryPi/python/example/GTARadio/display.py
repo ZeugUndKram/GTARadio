@@ -4,7 +4,6 @@ import os
 import sys
 import time
 import logging
-import spidev as SPI
 import tempfile
 from mutagen import File
 from mutagen.id3 import ID3, APIC

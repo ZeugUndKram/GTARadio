@@ -2,7 +2,7 @@ import os
 import sys
 import subprocess
 from display import display_image, show_default_image, clear_display_cache
-from radio import get_radio_stations, mp3_process
+from radio import get_radio_stations, mp3_process, reset_playback_position
 
 ASSETS_PATH = os.path.join(os.path.dirname(__file__), 'assets')
 
@@ -101,7 +101,8 @@ class SettingsManager:
         if mp3_process and mp3_process.poll() is None:
             mp3_process.terminate()
             mp3_process.wait()
-            print("Playback stopped")
+            reset_playback_position()  # Reset position when stopping
+            print("Playback stopped and position reset")
     
     def enter_settings(self):
         """Enter settings mode"""

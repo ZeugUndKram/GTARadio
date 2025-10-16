@@ -2,6 +2,7 @@ import subprocess
 import random
 import os
 import time
+import math
 
 mp3_process = None
 SHARED_BASE_PATH = '/mnt/shared/gta/'
@@ -11,6 +12,10 @@ _stations_cache = None
 _mp3_durations_cache = None
 _last_cache_update = 0
 CACHE_TIMEOUT = 30  # seconds
+
+# Global playback position tracking
+_current_playback_position = 0  # in seconds
+_first_playback = True
 
 def get_radio_stations(force_refresh=False):
     """Dynamically discover all games and their radio stations with caching"""
@@ -63,8 +68,9 @@ def get_radio_stations(force_refresh=False):
                 'mp3_path': file_path
             })
             
-            # Get duration (using default for now)
-            mp3_durations[file_path] = 300  # Default 5 minutes
+            # Get actual duration if possible, otherwise use default
+            duration = get_mp3_duration(file_path)
+            mp3_durations[file_path] = duration
     
     print(f"Cache updated: Found {len(stations)} games with stations")
     
@@ -75,6 +81,22 @@ def get_radio_stations(force_refresh=False):
     
     return stations, mp3_durations
 
+def get_mp3_duration(mp3_path):
+    """Get the actual duration of an MP3 file in seconds"""
+    try:
+        # Try using mutagen to get duration
+        from mutagen import File
+        audio = File(mp3_path)
+        if audio is not None and hasattr(audio, 'info'):
+            duration = audio.info.length
+            print(f"Found duration for {os.path.basename(mp3_path)}: {duration:.2f}s")
+            return math.ceil(duration)
+    except Exception as e:
+        print(f"Could not get duration for {mp3_path}: {e}")
+    
+    # Fallback to default duration
+    return 300  # Default 5 minutes
+
 def clear_cache():
     """Clear the cache to force refresh on next call"""
     global _stations_cache, _mp3_durations_cache, _last_cache_update
@@ -84,7 +106,7 @@ def clear_cache():
     print("Cache cleared")
 
 def play_radio(game_index, station_index):
-    global mp3_process
+    global mp3_process, _current_playback_position, _first_playback
     
     # Get available stations from cache
     stations, mp3_durations = get_radio_stations()
@@ -114,23 +136,58 @@ def play_radio(game_index, station_index):
     selected_station = game_stations[station_index]
     selected_song = selected_station['mp3_path']
     
+    # Get duration of the selected song
+    duration = mp3_durations.get(selected_song, 300)
+    
+    # Calculate start position
+    if _first_playback:
+        # First playback: use random position
+        start_position = random.uniform(0, duration)
+        _first_playback = False
+        print(f"First playback: random start at {start_position:.2f}s")
+    else:
+        # Subsequent playbacks: continue from last position (wrap around if needed)
+        start_position = _current_playback_position % duration
+        print(f"Continuing playback at {start_position:.2f}s (wrapped from {_current_playback_position:.2f}s)")
+    
+    # Update global position for next switch
+    _current_playback_position = start_position
+    
+    # Convert to frames (mpg123 uses 75 frames per second)
+    start_frame = int(start_position * 75)
+    
+    print(f"Playing {os.path.basename(selected_song)} from {start_position:.2f}s (frame {start_frame}) - Duration: {duration}s")
+
     # Terminate existing process
     if mp3_process and mp3_process.poll() is None:
         mp3_process.terminate()
         mp3_process.wait()
 
-    # Get duration and calculate random start
-    duration = mp3_durations.get(selected_song, 300)
-    random_start_frame = int(random.uniform(0, duration) * 75)
-
-    print(f"Playing {selected_song} from frame {random_start_frame}")
-
     # Start playback with suppressed output
     try:
         mp3_process = subprocess.Popen(
-            ['mpg123', '-k', str(random_start_frame), selected_song],
+            ['mpg123', '-k', str(start_frame), selected_song],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
     except Exception as e:
         print(f"Error starting playback: {e}")
+
+def update_playback_position():
+    """Update the current playback position based on elapsed time"""
+    global _current_playback_position
+    if not _first_playback:
+        # Increment position by small amount to simulate progress
+        # Note: This is approximate since we don't have exact position from mpg123
+        _current_playback_position += 0.1  # Update every 100ms
+
+def reset_playback_position():
+    """Reset to first playback mode (for when stopping/starting fresh)"""
+    global _first_playback, _current_playback_position
+    _first_playback = True
+    _current_playback_position = 0
+    print("Playback position reset")
+
+def get_current_position():
+    """Get the current playback position"""
+    return _current_playback_position

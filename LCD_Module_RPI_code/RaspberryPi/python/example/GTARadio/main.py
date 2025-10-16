@@ -18,7 +18,7 @@ from lib import LCD_1inch28
 from PIL import Image, ImageDraw, ImageFont
 
 from display import display_image, display_image_delay, clear_display_cache
-from radio import play_radio, get_radio_stations, clear_cache
+from radio import play_radio, get_radio_stations, clear_cache, update_playback_position, reset_playback_position, get_current_position
 from settings import settings_manager
 
 # Always use this directory
@@ -97,7 +97,7 @@ def update_display_and_audio(new_station_index):
     if not settings_manager.in_settings:
         display_image(game_index, station_index)
         play_radio(game_index, station_index - 1)  # -1 because stations start at 0 for radio
-        print(f"Game: {game_index}, Station: {station_index}")
+        print(f"Game: {game_index}, Station: {station_index}, Position: {get_current_position():.2f}s")
 
 def next_station():
     """Move to next station"""
@@ -227,12 +227,12 @@ def print_help():
     print("    [R]         - Refresh file cache")
     print("    [Q]         - Quit")
     print("    [1-9]       - Jump to station 1-9")
-    print("\nSettings Behavior:")
+    print("\nPlayback Behavior:")
+    print("  • First station starts at random position")
+    print("  • Switching stations continues from same time position")
+    print("  • Time wraps around for shorter/longer songs")
     print("  • Playback STOPS when entering settings")
-    print("  • Select playlists without auto-starting playback")
-    print("  • Turn encoder to start playback after playlist selection")
-    print("  • Press button on brightness to cycle through 5 levels")
-    print("  • Press button on Aus.png to shutdown the system")
+    print("  • Position resets when exiting settings")
     print("============================\n")
 
 def get_key():
@@ -440,9 +440,16 @@ if get_station_count(game_index) > 0:
     play_radio(game_index, station_index - 1)
 
 try:
+    last_position_update = time.time()
     while True:
+        # Update playback position periodically
+        current_time = time.time()
+        if current_time - last_position_update >= 0.1:  # Update every 100ms
+            update_playback_position()
+            last_position_update = current_time
+        
         # Keep the main thread alive and print status occasionally
-        time.sleep(5)
+        time.sleep(0.05)  # Reduced sleep for more responsive position updates
         
         # Print status every 30 seconds
         if int(time.time()) % 30 == 0:
@@ -452,7 +459,8 @@ try:
                 current_game = game_folders[game_index] if game_index < len(game_folders) else "Unknown"
                 station_count = get_station_count(game_index)
                 mode = "SETTINGS" if settings_manager.in_settings else "RADIO"
-                print(f"Status: {mode} | Game: '{current_game}' | Station: {station_index}/{station_count}")
+                current_pos = get_current_position()
+                print(f"Status: {mode} | Game: '{current_game}' | Station: {station_index}/{station_count} | Position: {current_pos:.2f}s")
 
 except KeyboardInterrupt:
     print("\nShutting down...")
