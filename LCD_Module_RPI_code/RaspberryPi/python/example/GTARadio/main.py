@@ -341,8 +341,8 @@ def terminal_control():
             print(f"Error in terminal control: {e}")
 
 def read_rotary_encoder():
-    """Read rotary encoder using state machine for proper quadrature decoding"""
-    global encoder_state, clk_last_state, dt_last_state, last_rotation_time
+    """Reliable rotary encoder reading that detects every detent"""
+    global clk_last_state, last_rotation_time
     
     current_time = time.time()
     
@@ -353,72 +353,28 @@ def read_rotary_encoder():
     clk_state = GPIO.input(PIN_CLK)
     dt_state = GPIO.input(PIN_DT)
     
-    # If no change, return
-    if clk_state == clk_last_state and dt_state == dt_last_state:
-        return
-    
-    # Combine states into a 2-bit value: [CLK, DT]
-    current_state = (clk_state << 1) | dt_state
-    last_state = (clk_last_state << 1) | dt_last_state
-    
-    # Debug: show state changes
-    # print(f"Last: {clk_last_state}{dt_last_state} ({last_state}) -> Current: {clk_state}{dt_state} ({current_state}) | State: {encoder_state}")
-    
-    # Simplified state machine - track transitions
-    if encoder_state == 0:
-        # Start of rotation
-        if last_state == 0b00 and current_state == 0b10:  # 00 -> 10 (CW start)
-            encoder_state = 1  # CW in progress
-        elif last_state == 0b00 and current_state == 0b01:  # 00 -> 01 (CCW start)
-            encoder_state = 2  # CCW in progress
-    elif encoder_state == 1:
-        # CW rotation in progress
-        if last_state == 0b10 and current_state == 0b11:  # 10 -> 11 (CW step 2)
-            encoder_state = 3
-        elif last_state == 0b10 and current_state == 0b00:  # 10 -> 00 (invalid, reset)
-            encoder_state = 0
-    elif encoder_state == 2:
-        # CCW rotation in progress
-        if last_state == 0b01 and current_state == 0b11:  # 01 -> 11 (CCW step 2)
-            encoder_state = 4
-        elif last_state == 0b01 and current_state == 0b00:  # 01 -> 00 (invalid, reset)
-            encoder_state = 0
-    elif encoder_state == 3:
-        # CW rotation almost complete
-        if last_state == 0b11 and current_state == 0b01:  # 11 -> 01 (CW step 3)
-            encoder_state = 5
-        elif last_state == 0b11 and current_state == 0b10:  # 11 -> 10 (invalid, reset)
-            encoder_state = 0
-    elif encoder_state == 4:
-        # CCW rotation almost complete
-        if last_state == 0b11 and current_state == 0b10:  # 11 -> 10 (CCW step 3)
-            encoder_state = 6
-        elif last_state == 0b11 and current_state == 0b01:  # 11 -> 01 (invalid, reset)
-            encoder_state = 0
-    elif encoder_state == 5:
-        # CW rotation complete
-        if last_state == 0b01 and current_state == 0b00:  # 01 -> 00 (CW complete)
-            if settings_manager.in_settings:
-                handle_settings_navigation('next')
+    # If CLK changed
+    if clk_state != clk_last_state:
+        # When CLK changes, check DT to determine direction
+        if clk_state == 0:  # CLK falling edge
+            if dt_state == 0:
+                # Clockwise rotation
+                if settings_manager.in_settings:
+                    handle_settings_navigation('next')
+                else:
+                    next_station()
+                print("Rotary: RIGHT")
+                last_rotation_time = current_time
             else:
-                next_station()
-            print("Rotary: RIGHT (complete cycle)")
-            last_rotation_time = current_time
-        encoder_state = 0  # Reset regardless
-    elif encoder_state == 6:
-        # CCW rotation complete
-        if last_state == 0b10 and current_state == 0b00:  # 10 -> 00 (CCW complete)
-            if settings_manager.in_settings:
-                handle_settings_navigation('previous')
-            else:
-                previous_station()
-            print("Rotary: LEFT (complete cycle)")
-            last_rotation_time = current_time
-        encoder_state = 0  # Reset regardless
-    
-    # Update last states
-    clk_last_state = clk_state
-    dt_last_state = dt_state
+                # Counter-clockwise rotation  
+                if settings_manager.in_settings:
+                    handle_settings_navigation('previous')
+                else:
+                    previous_station()
+                print("Rotary: LEFT")
+                last_rotation_time = current_time
+        
+        clk_last_state = clk_state
 
 def read_button():
     """Read button with proper debouncing"""
