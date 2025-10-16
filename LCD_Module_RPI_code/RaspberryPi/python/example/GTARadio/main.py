@@ -60,7 +60,7 @@ last_rotation_time = 0
 
 # Debounce times (in seconds)
 ROTATION_DEBOUNCE = 0.005  # 5ms for rotation
-BUTTON_DEBOUNCE = 0.05     # 50ms for button
+BUTTON_DEBOUNCE = 0.005     # 50ms for button
 DOUBLE_CLICK_TIME = 0.5    # 500ms for double click
 
 # Pre-cache data on startup
