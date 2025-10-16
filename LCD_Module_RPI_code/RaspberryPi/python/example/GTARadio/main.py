@@ -52,9 +52,15 @@ GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 # Rotary encoder variables
 clk_last_state = GPIO.input(PIN_CLK)
+dt_last_state = GPIO.input(PIN_DT)
 button_last_state = GPIO.input(BUTTON_PIN)
 last_button_press_time = 0
-debounce_delay = 0.02  # 20ms debounce
+last_rotation_time = 0
+
+# Debounce times (in seconds)
+ROTATION_DEBOUNCE = 0.01  # 10ms for rotation
+BUTTON_DEBOUNCE = 0.05    # 50ms for button
+DOUBLE_CLICK_TIME = 0.5   # 500ms for double click
 
 # Pre-cache data on startup
 print("Pre-caching file structure...")
@@ -334,51 +340,80 @@ def terminal_control():
             print(f"Error in terminal control: {e}")
 
 def read_rotary_encoder():
-    """Read rotary encoder state and handle rotation"""
-    global clk_last_state
+    """Read rotary encoder with proper debouncing"""
+    global clk_last_state, dt_last_state, last_rotation_time
+    
+    current_time = time.time()
+    
+    # Only check for rotation if enough time has passed since last rotation
+    if current_time - last_rotation_time < ROTATION_DEBOUNCE:
+        return
     
     clk_state = GPIO.input(PIN_CLK)
     dt_state = GPIO.input(PIN_DT)
     
-    # Check for rotation
+    # If CLK state has changed
     if clk_state != clk_last_state:
-        # CLK pin changed state, so rotation occurred
-        if dt_state != clk_state:
-            # Turning clockwise (right)
-            if settings_manager.in_settings:
-                handle_settings_navigation('next')
-            else:
-                next_station()
-        else:
-            # Turning counter-clockwise (left)
-            if settings_manager.in_settings:
-                handle_settings_navigation('previous')
-            else:
-                previous_station()
+        # Wait a bit more to ensure the state is stable (debounce)
+        time.sleep(0.001)
+        clk_state_stable = GPIO.input(PIN_CLK)
+        dt_state_stable = GPIO.input(PIN_DT)
         
-        clk_last_state = clk_state
-        time.sleep(debounce_delay)  # Debounce
+        # If state is still the same after waiting, it's a valid rotation
+        if clk_state_stable == clk_state:
+            # Check the direction based on DT state when CLK changes
+            if dt_state_stable != clk_state:
+                # Turning clockwise (right)
+                if settings_manager.in_settings:
+                    handle_settings_navigation('next')
+                else:
+                    next_station()
+                print("Rotary: RIGHT")
+            else:
+                # Turning counter-clockwise (left)
+                if settings_manager.in_settings:
+                    handle_settings_navigation('previous')
+                else:
+                    previous_station()
+                print("Rotary: LEFT")
+            
+            last_rotation_time = current_time
+        
+        # Update last states
+        clk_last_state = clk_state_stable
+        dt_last_state = dt_state_stable
 
 def read_button():
-    """Read button state and handle presses"""
+    """Read button with proper debouncing"""
     global button_last_state, last_button_press_time
     
-    button_state = GPIO.input(BUTTON_PIN)
     current_time = time.time()
+    
+    # Only check button if enough time has passed since last check
+    if current_time - last_button_press_time < BUTTON_DEBOUNCE:
+        return
+    
+    button_state = GPIO.input(BUTTON_PIN)
     
     # Check for button press (active low - button pressed when LOW)
     if button_state == GPIO.LOW and button_last_state == GPIO.HIGH:
-        # Button just pressed
-        if current_time - last_button_press_time < 0.5:  # Double click within 500ms
-            # Double click - switch game
-            if not settings_manager.in_settings:
-                next_game()
-        else:
-            # Single click - handle as space action
-            handle_space_action()
+        # Button just pressed - wait a bit to debounce
+        time.sleep(0.01)
+        button_state_stable = GPIO.input(BUTTON_PIN)
         
-        last_button_press_time = current_time
-        time.sleep(debounce_delay)  # Debounce
+        if button_state_stable == GPIO.LOW:
+            # Valid button press
+            if current_time - last_button_press_time < DOUBLE_CLICK_TIME:
+                # Double click detected - switch game
+                if not settings_manager.in_settings:
+                    next_game()
+                    print("Button: DOUBLE-CLICK (next game)")
+            else:
+                # Single click - handle as space action
+                handle_space_action()
+                print("Button: SINGLE-CLICK")
+            
+            last_button_press_time = current_time
     
     button_last_state = button_state
 
