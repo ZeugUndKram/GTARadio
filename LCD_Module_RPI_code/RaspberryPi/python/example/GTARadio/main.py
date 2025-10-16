@@ -377,14 +377,10 @@ def read_rotary_encoder():
         clk_last_state = clk_state
 
 def read_button():
-    """Read button with proper debouncing"""
+    """Read button with improved debouncing for rapid presses"""
     global button_last_state, last_button_press_time
     
     current_time = time.time()
-    
-    # Only check button if enough time has passed since last check
-    if current_time - last_button_press_time < BUTTON_DEBOUNCE:
-        return
     
     button_state = GPIO.input(BUTTON_PIN)
     
@@ -401,13 +397,14 @@ def read_button():
                 if not settings_manager.in_settings:
                     next_game()
                     print("Button: DOUBLE-CLICK (next game)")
+                    last_button_press_time = current_time
             else:
                 # Single click - handle as space action
                 handle_space_action()
                 print("Button: SINGLE-CLICK")
-            
-            last_button_press_time = current_time
+                last_button_press_time = current_time
     
+    # Update last state
     button_last_state = button_state
 
 def rotary_control():
