@@ -5,6 +5,7 @@ import sys
 import time
 import logging
 import tempfile
+import threading
 from mutagen import File
 from mutagen.id3 import ID3, APIC
 
@@ -35,6 +36,12 @@ _station_files_cache = {}
 _image_cache = {}  # Cache for loaded images
 _last_cache_update = 0
 CACHE_TIMEOUT = 30  # seconds
+
+# GIF animation variables
+_current_animated_gif = None
+_animation_thread = None
+_animation_running = False
+_animation_lock = threading.Lock()
 
 # Brightness levels (0-4) mapped to brightness factors
 BRIGHTNESS_FACTORS = [0.3, 0.5, 0.7, 0.85, 1.0]  # hell_0 to hell_4
@@ -69,6 +76,139 @@ def apply_brightness(image, brightness_factor):
     except Exception as e:
         print(f"Error applying brightness: {e}")
         return image
+
+def stop_animation():
+    """Stop any running GIF animation"""
+    global _animation_running, _animation_thread, _current_animated_gif
+    
+    with _animation_lock:
+        _animation_running = False
+        _current_animated_gif = None
+    
+    if _animation_thread and _animation_thread.is_alive():
+        _animation_thread.join(timeout=1.0)
+        _animation_thread = None
+    
+    print("GIF animation stopped")
+
+def display_animated_gif(gif_path):
+    """Display an animated GIF with proper frame timing"""
+    global _animation_running, _animation_thread, _current_animated_gif
+    
+    # Stop any existing animation
+    stop_animation()
+    
+    try:
+        # Open the GIF
+        gif_image = Image.open(gif_path)
+        
+        if not getattr(gif_image, 'is_animated', False):
+            print(f"GIF is not animated: {gif_path}")
+            # Display as static image
+            display_static_image(gif_image, gif_path)
+            return
+        
+        print(f"Playing animated GIF: {gif_path} ({gif_image.n_frames} frames)")
+        
+        with _animation_lock:
+            _current_animated_gif = gif_path
+            _animation_running = True
+        
+        # Start animation in a separate thread
+        _animation_thread = threading.Thread(
+            target=_animate_gif_thread,
+            args=(gif_image, gif_path),
+            daemon=True
+        )
+        _animation_thread.start()
+        
+    except Exception as e:
+        print(f"Error displaying animated GIF {gif_path}: {e}")
+        show_default_image()
+
+def _animate_gif_thread(gif_image, gif_path):
+    """Thread function for playing GIF animations"""
+    global _animation_running
+    
+    frame_count = 0
+    brightness_factor = get_current_brightness_factor()
+    
+    while _animation_running:
+        try:
+            for frame in range(gif_image.n_frames):
+                if not _animation_running:
+                    break
+                    
+                # Check if this is still the current GIF
+                with _animation_lock:
+                    if _current_animated_gif != gif_path:
+                        _animation_running = False
+                        break
+                
+                # Seek to frame
+                gif_image.seek(frame)
+                
+                # Convert to RGB if needed and resize
+                frame_image = gif_image.convert('RGB')
+                if frame_image.size != (240, 240):
+                    frame_image = frame_image.resize((240, 240), Image.Resampling.LANCZOS)
+                
+                # Apply brightness
+                frame_image = apply_brightness(frame_image, brightness_factor)
+                
+                # Display frame
+                im_r = frame_image.rotate(0)
+                disp.ShowImage(im_r)
+                
+                # Get frame duration (default to 100ms if not specified)
+                try:
+                    duration = gif_image.info.get('duration', 100)
+                except:
+                    duration = 100
+                
+                # Wait for next frame (convert ms to seconds)
+                frame_delay = max(0.01, duration / 1000.0)  # Minimum 10ms delay
+                time.sleep(frame_delay)
+                
+                frame_count += 1
+                
+                # Update brightness periodically in case it changes
+                if frame_count % 10 == 0:
+                    brightness_factor = get_current_brightness_factor()
+            
+            # Loop the animation if still running
+            if _animation_running:
+                gif_image.seek(0)  # Reset to first frame
+                
+        except Exception as e:
+            print(f"Error in GIF animation thread for {gif_path}: {e}")
+            break
+    
+    print(f"GIF animation thread ended for {gif_path}")
+
+def display_static_image(image, image_path):
+    """Display a static image (non-animated)"""
+    try:
+        # Resize image to fit display if needed
+        if image.size != (240, 240):
+            image = image.resize((240, 240), Image.Resampling.LANCZOS)
+        
+        # Apply current brightness setting
+        brightness_factor = get_current_brightness_factor()
+        image = apply_brightness(image, brightness_factor)
+        
+        im_r = image.rotate(0)
+        
+        # Cache the image
+        cache_key = f"static_{os.path.basename(image_path)}"
+        _image_cache[cache_key] = im_r
+        
+        disp.ShowImage(im_r)
+        print(f"Displayed static image: {os.path.basename(image_path)} (brightness: {brightness_factor})")
+        
+    except Exception as e:
+        print(f"Error displaying static image {image_path}: {e}")
+        show_default_image()
 
 def get_available_games(force_refresh=False):
     """Get list of available games with caching"""
@@ -229,10 +369,10 @@ def get_image_path(game_index, display_index, force_refresh=False):
     
     # If display_index is 0, show game logo
     if display_index == 0:
-        # Look for common game logo names
-        game_logo_names = ['game.png', 'game.jpg', 'logo.png', 'logo.jpg', 
-                          f'{game_name}.png', f'{game_name}.jpg',
-                          'cover.png', 'cover.jpg', 'default.png']
+        # Look for common game logo names (including GIFs)
+        game_logo_names = ['game.png', 'game.jpg', 'game.gif', 'logo.png', 'logo.jpg', 'logo.gif',
+                          f'{game_name}.png', f'{game_name}.jpg', f'{game_name}.gif',
+                          'cover.png', 'cover.jpg', 'cover.gif', 'default.png']
         for logo_name in game_logo_names:
             logo_path = os.path.join(game_path, logo_name)
             if os.path.exists(logo_path):
@@ -250,7 +390,7 @@ def get_image_path(game_index, display_index, force_refresh=False):
     mp3_file = station_files[station_index]
     station_name = os.path.splitext(mp3_file)[0]
     
-    # Look for image with same name as MP3
+    # Look for image with same name as MP3 (including GIFs)
     image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp']
     for ext in image_extensions:
         image_path = os.path.join(game_path, station_name + ext)
@@ -276,7 +416,7 @@ def get_image_path(game_index, display_index, force_refresh=False):
 def get_image_path_with_priority(game_index, display_index, force_refresh=False):
     """
     Get image path with priority:
-    1. Dedicated image file (PNG, JPG, etc.)
+    1. Dedicated image file (PNG, JPG, GIF, etc.)
     2. Embedded MP3 cover art
     3. Default generated image
     """
@@ -296,6 +436,9 @@ def get_image_path_with_priority(game_index, display_index, force_refresh=False)
 
 def display_settings_image(setting_index):
     """Display settings images"""
+    # Stop any running animation when showing settings
+    stop_animation()
+    
     # These are just the base names - the actual brightness image will be dynamic
     settings_base_images = [
         'playlist.png',
@@ -314,17 +457,21 @@ def display_settings_image(setting_index):
         
         if os.path.exists(image_path):
             try:
-                image = Image.open(image_path)
-                if image.size != (240, 240):
-                    image = image.resize((240, 240), Image.Resampling.LANCZOS)
-                
-                # Apply current brightness to settings images too
-                brightness_factor = get_current_brightness_factor()
-                image = apply_brightness(image, brightness_factor)
-                
-                im_r = image.rotate(0)
-                disp.ShowImage(im_r)
-                print(f"Displayed settings image: {os.path.basename(image_path)} (brightness: {brightness_factor})")
+                # Check if it's a GIF
+                if image_path.lower().endswith('.gif'):
+                    display_animated_gif(image_path)
+                else:
+                    image = Image.open(image_path)
+                    if image.size != (240, 240):
+                        image = image.resize((240, 240), Image.Resampling.LANCZOS)
+                    
+                    # Apply current brightness to settings images too
+                    brightness_factor = get_current_brightness_factor()
+                    image = apply_brightness(image, brightness_factor)
+                    
+                    im_r = image.rotate(0)
+                    disp.ShowImage(im_r)
+                    print(f"Displayed settings image: {os.path.basename(image_path)} (brightness: {brightness_factor})")
             except Exception as e:
                 print(f"Error displaying settings image: {e}")
                 show_default_image()
@@ -336,17 +483,24 @@ def display_settings_image(setting_index):
 
 def display_shutdown_image():
     """Display the Shutdown.png image"""
+    # Stop any running animation
+    stop_animation()
+    
     shutdown_image_path = os.path.join(os.path.dirname(__file__), 'assets', 'Shutdown.png')
     if os.path.exists(shutdown_image_path):
         try:
-            image = Image.open(shutdown_image_path)
-            if image.size != (240, 240):
-                image = image.resize((240, 240), Image.Resampling.LANCZOS)
-            
-            # Don't apply brightness to shutdown image - keep it full brightness
-            im_r = image.rotate(0)
-            disp.ShowImage(im_r)
-            print("Displayed Shutdown.png")
+            # Check if it's a GIF
+            if shutdown_image_path.lower().endswith('.gif'):
+                display_animated_gif(shutdown_image_path)
+            else:
+                image = Image.open(shutdown_image_path)
+                if image.size != (240, 240):
+                    image = image.resize((240, 240), Image.Resampling.LANCZOS)
+                
+                # Don't apply brightness to shutdown image - keep it full brightness
+                im_r = image.rotate(0)
+                disp.ShowImage(im_r)
+                print("Displayed Shutdown.png")
         except Exception as e:
             print(f"Error displaying shutdown image: {e}")
             show_default_image()
@@ -355,6 +509,9 @@ def display_shutdown_image():
 
 def display_playlist_name(playlist_name):
     """Display playlist name when no logo exists"""
+    # Stop any running animation
+    stop_animation()
+    
     try:
         image = Image.new('RGB', (240, 240), color='darkblue')
         draw = ImageDraw.Draw(image)
@@ -402,7 +559,7 @@ def display_playlist_name(playlist_name):
         show_default_image()
 
 def display_image(game_index, display_index, force_refresh=False):
-    """Display image with support for settings mode and MP3 cover art fallback"""
+    """Display image with support for animated GIFs, settings mode and MP3 cover art fallback"""
     if game_index == -1:
         # Settings mode
         display_settings_image(display_index)
@@ -412,28 +569,19 @@ def display_image(game_index, display_index, force_refresh=False):
         display_shutdown_image()
         return
     
-    # Normal game/station display with MP3 cover art fallback
+    # Normal game/station display with GIF and MP3 cover art fallback
     image_path = get_image_path_with_priority(game_index, display_index, force_refresh)
     
     if image_path and os.path.exists(image_path):
         try:
-            image = Image.open(image_path)
-            # Resize image to fit display if needed
-            if image.size != (240, 240):
-                image = image.resize((240, 240), Image.Resampling.LANCZOS)
-            
-            # Apply current brightness setting
-            brightness_factor = get_current_brightness_factor()
-            image = apply_brightness(image, brightness_factor)
-            
-            im_r = image.rotate(0)
-            
-            # Cache the image
-            cache_key = f"{game_index}_{display_index}"
-            _image_cache[cache_key] = im_r
-            
-            disp.ShowImage(im_r)
-            print(f"Displayed image with brightness: {brightness_factor}")
+            # Check if it's an animated GIF
+            if image_path.lower().endswith('.gif'):
+                display_animated_gif(image_path)
+            else:
+                # Static image handling
+                image = Image.open(image_path)
+                display_static_image(image, image_path)
+                
         except Exception as e:
             print(f"Error displaying image {image_path}: {e}")
             # If it's a game logo that failed, show playlist name instead
@@ -456,6 +604,9 @@ def display_image(game_index, display_index, force_refresh=False):
 
 def show_default_image():
     """Display a default image when no specific image is found"""
+    # Stop any running animation
+    stop_animation()
+    
     try:
         image = Image.new('RGB', (240, 240), color='black')
         draw = ImageDraw.Draw(image)
@@ -475,15 +626,20 @@ def show_default_image():
         print(f"Error showing default image: {e}")
 
 def clear_display_cache():
-    """Clear the display cache"""
+    """Clear the display cache and stop animations"""
     global _games_cache, _station_files_cache, _image_cache, _last_cache_update
+    
+    # Stop any running animations
+    stop_animation()
+    
     _games_cache = None
     _station_files_cache = {}
     _image_cache = {}
     _last_cache_update = 0
-    print("Display cache cleared")
+    print("Display cache cleared and animations stopped")
 
 def display_image_delay(game_index, station_index):
+    """Display image with delay (for compatibility)"""
     time.sleep(0.1)  # Reduced delay
     display_image(game_index, station_index)
 
