@@ -4,6 +4,14 @@ import os
 import time
 import math
 
+# Try to import mutagen at the top level
+try:
+    from mutagen import File
+    MUTAGEN_AVAILABLE = True
+except ImportError:
+    MUTAGEN_AVAILABLE = False
+    print("Mutagen not available - using default MP3 durations")
+
 mp3_process = None
 SHARED_BASE_PATH = '/mnt/shared/gta/'
 
@@ -85,16 +93,15 @@ def get_radio_stations(force_refresh=False):
 
 def get_mp3_duration(mp3_path):
     """Get the actual duration of an MP3 file in seconds"""
-    try:
-        # Try using mutagen to get duration
-        from mutagen import File
-        audio = File(mp3_path)
-        if audio is not None and hasattr(audio, 'info'):
-            duration = audio.info.length
-            print(f"Found duration for {os.path.basename(mp3_path)}: {duration:.2f}s")
-            return math.ceil(duration)
-    except Exception as e:
-        print(f"Could not get duration for {mp3_path}: {e}")
+    if MUTAGEN_AVAILABLE:
+        try:
+            audio = File(mp3_path)
+            if audio is not None and hasattr(audio, 'info'):
+                duration = audio.info.length
+                print(f"Found duration for {os.path.basename(mp3_path)}: {duration:.2f}s")
+                return math.ceil(duration)
+        except Exception as e:
+            print(f"Could not get duration for {mp3_path}: {e}")
     
     # Fallback to default duration
     return 300  # Default 5 minutes
@@ -184,8 +191,6 @@ def play_radio(game_index, station_index):
         )
     except Exception as e:
         print(f"Error starting playback: {e}")
-
-# REMOVED: update_playback_position() function - no longer needed
 
 def reset_playback_position():
     """Reset to first playback mode (for when stopping/starting fresh)"""
