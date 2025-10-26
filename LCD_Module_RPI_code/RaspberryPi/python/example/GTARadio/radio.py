@@ -23,7 +23,6 @@ _music_mode = False  # False = radio mode, True = music mode
 _song_end_thread = None
 _song_end_running = False
 
-
 def get_radio_stations(force_refresh=False):
     """Dynamically discover all games and their radio stations with caching"""
     global _stations_cache, _mp3_durations_cache, _last_cache_update
