@@ -7,6 +7,7 @@ import os
 import time
 
 import math
+import threading
 
 
 
@@ -26,13 +27,23 @@ _last_cache_update = 0
 
 CACHE_TIMEOUT = 30  # seconds
 
+<<<<<<< HEAD
 
 
 # Global playback position tracking
 
 _current_playback_position = 0  # in seconds
 
+=======
+# Global playback position tracking
+_current_playback_position = 0  # in seconds
+>>>>>>> parent of 36c7a70 (Update radio.py)
 _first_playback = True
+_current_song_duration = 0
+_song_end_time = 0
+_music_mode = False  # False = radio mode, True = music mode
+_song_end_thread = None
+_song_end_running = False
 
 
 
@@ -207,6 +218,7 @@ def clear_cache():
     _mp3_durations_cache = None
 
     _last_cache_update = 0
+<<<<<<< HEAD
 
     print("Cache cleared")
 
@@ -216,6 +228,47 @@ def play_radio(game_index, station_index):
 
     global mp3_process, _current_playback_position, _first_playback
 
+=======
+    print("Cache cleared")
+
+def set_music_mode(enabled):
+    """Set music mode (True) or radio mode (False)"""
+    global _music_mode
+    _music_mode = enabled
+    print(f"Music mode {'enabled' if enabled else 'disabled'}")
+
+def get_music_mode():
+    """Get current music mode status"""
+    return _music_mode
+
+def _stop_song_end_monitor():
+    """Stop the song end monitoring thread"""
+    global _song_end_running, _song_end_thread
+    _song_end_running = False
+    if _song_end_thread and _song_end_thread.is_alive():
+        _song_end_thread.join(timeout=1.0)
+        _song_end_thread = None
+
+def _song_end_monitor():
+    """Monitor for song end and play next song in music mode"""
+    global _song_end_running, _music_mode, _current_playback_position
+    
+    while _song_end_running and _music_mode:
+        current_time = time.time()
+        
+        # Check if current song has ended
+        if current_time >= _song_end_time:
+            print("Song ended, playing next station in music mode")
+            from main import next_station
+            next_station()
+            break
+        
+        time.sleep(0.1)  # Check every 100ms
+
+def play_radio(game_index, station_index):
+    global mp3_process, _current_playback_position, _first_playback, _current_song_duration, _song_end_time
+    global _song_end_thread, _song_end_running, _music_mode
+>>>>>>> parent of 36c7a70 (Update radio.py)
     
 
     # Get available stations from cache
@@ -275,6 +328,7 @@ def play_radio(game_index, station_index):
     
 
     # Get duration of the selected song
+<<<<<<< HEAD
 
     duration = mp3_durations.get(selected_song, 300)
 
@@ -306,6 +360,35 @@ def play_radio(game_index, station_index):
 
     _current_playback_position = start_position
 
+=======
+    _current_song_duration = mp3_durations.get(selected_song, 300)
+    
+    # Calculate start position based on mode
+    if _music_mode:
+        # Music mode: always start from beginning
+        start_position = 0
+        print(f"Music mode: starting from beginning (0s)")
+        _first_playback = False  # Don't use random position even on first playback in music mode
+    else:
+        # Radio mode: use existing logic
+        if _first_playback:
+            # First playback: use random position
+            start_position = random.uniform(0, _current_song_duration)
+            _first_playback = False
+            print(f"Radio mode: random start at {start_position:.2f}s")
+        else:
+            # Subsequent playbacks: continue from last position (wrap around if needed)
+            start_position = _current_playback_position % _current_song_duration
+            print(f"Radio mode: continuing at {start_position:.2f}s (wrapped from {_current_playback_position:.2f}s)")
+    
+    # Update global position for next switch (in radio mode)
+    _current_playback_position = start_position
+    
+    # Calculate song end time for music mode
+    if _music_mode:
+        _song_end_time = time.time() + (_current_song_duration - start_position)
+        print(f"Song will end at: {time.ctime(_song_end_time)}")
+>>>>>>> parent of 36c7a70 (Update radio.py)
     
 
     # Convert to frames (mpg123 uses 75 frames per second)
@@ -313,8 +396,12 @@ def play_radio(game_index, station_index):
     start_frame = int(start_position * 75)
 
     
+<<<<<<< HEAD
 
     print(f"Playing {os.path.basename(selected_song)} from {start_position:.2f}s (frame {start_frame}) - Duration: {duration}s")
+=======
+    print(f"Playing {os.path.basename(selected_song)} from {start_position:.2f}s (frame {start_frame}) - Duration: {_current_song_duration}s - Mode: {'Music' if _music_mode else 'Radio'}")
+>>>>>>> parent of 36c7a70 (Update radio.py)
 
 
 
@@ -326,7 +413,12 @@ def play_radio(game_index, station_index):
 
         mp3_process.wait()
 
+<<<<<<< HEAD
 
+=======
+    # Stop previous song end monitor
+    _stop_song_end_monitor()
+>>>>>>> parent of 36c7a70 (Update radio.py)
 
     # Start playback with suppressed output
 
@@ -341,11 +433,23 @@ def play_radio(game_index, station_index):
             stderr=subprocess.DEVNULL
 
         )
+<<<<<<< HEAD
 
+=======
+        
+        # Start song end monitoring thread if in music mode
+        if _music_mode:
+            _song_end_running = True
+            _song_end_thread = threading.Thread(target=_song_end_monitor, daemon=True)
+            _song_end_thread.start()
+            print("Started song end monitor")
+            
+>>>>>>> parent of 36c7a70 (Update radio.py)
     except Exception as e:
 
         print(f"Error starting playback: {e}")
 
+<<<<<<< HEAD
 
 
 def update_playback_position():
@@ -363,10 +467,19 @@ def update_playback_position():
         _current_playback_position += 0.1  # Update every 100ms
 
 
+=======
+def update_playback_position():
+    """Update the current playback position based on elapsed time"""
+    global _current_playback_position, _music_mode
+    if not _first_playback and not _music_mode:
+        # Only update position in radio mode (in music mode we use actual file position)
+        _current_playback_position += 0.1  # Update every 100ms
+>>>>>>> parent of 36c7a70 (Update radio.py)
 
 def reset_playback_position():
 
     """Reset to first playback mode (for when stopping/starting fresh)"""
+<<<<<<< HEAD
 
     global _first_playback, _current_playback_position
 
@@ -382,4 +495,14 @@ def get_current_position():
 
     """Get the current playback position"""
 
+=======
+    global _first_playback, _current_playback_position
+    _first_playback = True
+    _current_playback_position = 0
+    _stop_song_end_monitor()
+    print("Playback position reset")
+
+def get_current_position():
+    """Get the current playback position"""
+>>>>>>> parent of 36c7a70 (Update radio.py)
     return _current_playback_position
