@@ -18,7 +18,7 @@ from lib import LCD_1inch28
 from PIL import Image, ImageDraw, ImageFont
 
 from display import display_image, display_image_delay, clear_display_cache
-from radio import play_radio, get_radio_stations, clear_cache, reset_playback_position, get_current_position
+from radio import play_radio, get_radio_stations, clear_cache, update_playback_position, reset_playback_position, get_current_position
 from settings import settings_manager
 
 # Always use this directory
@@ -440,12 +440,16 @@ if get_station_count(game_index) > 0:
     play_radio(game_index, station_index - 1)
 
 try:
-    # REMOVED: The position update loop since we don't need it anymore
-    # The new system uses real time instead of simulated progress
-    
+    last_position_update = time.time()
     while True:
-        # Keep the main thread alive
-        time.sleep(1.0)
+        # Update playback position periodically
+        current_time = time.time()
+        if current_time - last_position_update >= 0.1:  # Update every 100ms
+            update_playback_position()
+            last_position_update = current_time
+        
+        # Keep the main thread alive and print status occasionally
+        time.sleep(0.05)  # Reduced sleep for more responsive position updates
         
         # Print status every 30 seconds
         if int(time.time()) % 30 == 0:
