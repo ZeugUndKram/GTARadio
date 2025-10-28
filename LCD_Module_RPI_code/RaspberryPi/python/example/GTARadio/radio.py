@@ -3,7 +3,6 @@ import random
 import os
 import time
 import math
-import threading
 
 mp3_process = None
 SHARED_BASE_PATH = '/mnt/shared/gta/'
@@ -17,11 +16,6 @@ CACHE_TIMEOUT = 30  # seconds
 # Global playback position tracking
 _current_playback_position = 0  # in seconds
 _first_playback = True
-_current_song_duration = 0
-_song_end_time = 0
-_music_mode = False  # False = radio mode, True = music mode
-_song_end_thread = None
-_song_end_running = False
 
 def get_radio_stations(force_refresh=False):
     """Dynamically discover all games and their radio stations with caching"""
@@ -113,6 +107,7 @@ def clear_cache():
     print("Cache cleared")
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
 >>>>>>> parent of 36c7a70 (Update radio.py)
@@ -176,6 +171,10 @@ def play_radio(game_index, station_index):
 <<<<<<< HEAD
 
 =======
+=======
+def play_radio(game_index, station_index):
+    global mp3_process, _current_playback_position, _first_playback
+>>>>>>> parent of f9bb197 (Removed gif func added music setting)
     
 >>>>>>> parent of 36c7a70 (Update radio.py)
     # Get available stations from cache
@@ -208,37 +207,26 @@ def play_radio(game_index, station_index):
 =======
     
     # Get duration of the selected song
-    _current_song_duration = mp3_durations.get(selected_song, 300)
+    duration = mp3_durations.get(selected_song, 300)
     
-    # Calculate start position based on mode
-    if _music_mode:
-        # Music mode: always start from beginning
-        start_position = 0
-        print(f"Music mode: starting from beginning (0s)")
-        _first_playback = False  # Don't use random position even on first playback in music mode
+    # Calculate start position
+    if _first_playback:
+        # First playback: use random position
+        start_position = random.uniform(0, duration)
+        _first_playback = False
+        print(f"First playback: random start at {start_position:.2f}s")
     else:
-        # Radio mode: use existing logic
-        if _first_playback:
-            # First playback: use random position
-            start_position = random.uniform(0, _current_song_duration)
-            _first_playback = False
-            print(f"Radio mode: random start at {start_position:.2f}s")
-        else:
-            # Subsequent playbacks: continue from last position (wrap around if needed)
-            start_position = _current_playback_position % _current_song_duration
-            print(f"Radio mode: continuing at {start_position:.2f}s (wrapped from {_current_playback_position:.2f}s)")
+        # Subsequent playbacks: continue from last position (wrap around if needed)
+        start_position = _current_playback_position % duration
+        print(f"Continuing playback at {start_position:.2f}s (wrapped from {_current_playback_position:.2f}s)")
     
-    # Update global position for next switch (in radio mode)
+    # Update global position for next switch
     _current_playback_position = start_position
-    
-    # Calculate song end time for music mode
-    if _music_mode:
-        _song_end_time = time.time() + (_current_song_duration - start_position)
-        print(f"Song will end at: {time.ctime(_song_end_time)}")
     
     # Convert to frames (mpg123 uses 75 frames per second)
     start_frame = int(start_position * 75)
     
+<<<<<<< HEAD
     print(f"Playing {os.path.basename(selected_song)} from {start_position:.2f}s (frame {start_frame}) - Duration: {_current_song_duration}s - Mode: {'Music' if _music_mode else 'Radio'}")
 >>>>>>> parent of 36c7a70 (Update radio.py)
 
@@ -266,11 +254,15 @@ def play_radio(game_index, station_index):
     start_frame = int(start_position * 75)
     print(f"Playing {os.path.basename(selected_song)} from {start_position:.2f}s "
           f"(frame {start_frame}) - Duration: {_current_song_duration}s - Mode: {'Music' if _music_mode else 'Radio'}")
+=======
+    print(f"Playing {os.path.basename(selected_song)} from {start_position:.2f}s (frame {start_frame}) - Duration: {duration}s")
+>>>>>>> parent of f9bb197 (Removed gif func added music setting)
 
     if mp3_process and mp3_process.poll() is None:
         mp3_process.terminate()
         mp3_process.wait()
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     _stop_song_end_monitor()
 
@@ -278,6 +270,8 @@ def play_radio(game_index, station_index):
     # Stop previous song end monitor
     _stop_song_end_monitor()
 
+=======
+>>>>>>> parent of f9bb197 (Removed gif func added music setting)
     # Start playback with suppressed output
 >>>>>>> parent of 36c7a70 (Update radio.py)
     try:
@@ -286,6 +280,7 @@ def play_radio(game_index, station_index):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
+<<<<<<< HEAD
         
 <<<<<<< HEAD
 =======
@@ -297,6 +292,8 @@ def play_radio(game_index, station_index):
             _song_end_thread.start()
             print("Started song end monitor")
             
+=======
+>>>>>>> parent of f9bb197 (Removed gif func added music setting)
     except Exception as e:
         print(f"Error starting playback: {e}")
 
@@ -306,6 +303,7 @@ def play_radio(game_index, station_index):
 >>>>>>> parent of 36c7a70 (Update radio.py)
 def update_playback_position():
     """Update the current playback position based on elapsed time"""
+<<<<<<< HEAD
     global _current_playback_position, _music_mode
     if not _first_playback and not _music_mode:
 <<<<<<< HEAD
@@ -313,6 +311,12 @@ def update_playback_position():
 
 =======
         # Only update position in radio mode (in music mode we use actual file position)
+=======
+    global _current_playback_position
+    if not _first_playback:
+        # Increment position by small amount to simulate progress
+        # Note: This is approximate since we don't have exact position from mpg123
+>>>>>>> parent of f9bb197 (Removed gif func added music setting)
         _current_playback_position += 0.1  # Update every 100ms
 >>>>>>> parent of 36c7a70 (Update radio.py)
 
@@ -321,7 +325,6 @@ def reset_playback_position():
     global _first_playback, _current_playback_position
     _first_playback = True
     _current_playback_position = 0
-    _stop_song_end_monitor()
     print("Playback position reset")
 <<<<<<< HEAD
 
